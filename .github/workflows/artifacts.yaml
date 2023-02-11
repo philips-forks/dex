@@ -27,8 +27,7 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: |
-            ghcr.io/dexidp/dex
-            dexidp/dex
+            ghcr.io/loafoe/dex
           flavor: |
             latest = false
           tags: |
@@ -70,7 +69,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          platforms: linux/amd64,linux/arm/v7,linux/arm64,linux/ppc64le
+          platforms: linux/amd64,linux/arm64
           # cache-from: type=gha
           # cache-to: type=gha,mode=max
           push: ${{ github.event_name == 'push' }}
@@ -85,7 +84,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.10.0
         with:
-          image-ref: "ghcr.io/dexidp/dex:${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}"
+          image-ref: "ghcr.io/loafoe/dex:${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}"
           format: "sarif"
           output: "trivy-results.sarif"
         if: github.event_name == 'push'
