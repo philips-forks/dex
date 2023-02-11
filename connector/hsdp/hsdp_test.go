@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/philips-software/go-hsdp-api/iam"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/square/go-jose.v2"
 
@@ -221,6 +222,15 @@ func setupServer(tok map[string]interface{}) (*httptest.Server, error) {
 			"authorization_endpoint": fmt.Sprintf("%s/authorize", url),
 			"userinfo_endpoint":      fmt.Sprintf("%s/userinfo", url),
 			"jwks_uri":               fmt.Sprintf("%s/keys", url),
+			"introspection_endpoint": fmt.Sprintf("%s/introspect", url),
+		})
+	})
+
+	mux.HandleFunc("/introspect", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(&iam.IntrospectResponse{
+			Active:   true,
+			Username: "foo",
 		})
 	})
 
