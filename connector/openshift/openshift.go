@@ -84,7 +84,7 @@ func (c *Config) OpenWithHTTPClient(id string, logger log.Logger,
 	ctx, cancel := context.WithCancel(context.Background())
 
 	wellKnownURL := strings.TrimSuffix(c.Issuer, "/") + wellKnownURLPath
-	req, err := http.NewRequest(http.MethodGet, wellKnownURL, nil)
+	req, _ := http.NewRequest(http.MethodGet, wellKnownURL, nil)
 
 	openshiftConnector := openshiftConnector{
 		apiURL:       c.Issuer,
