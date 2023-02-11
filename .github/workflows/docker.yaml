@@ -1,12 +1,9 @@
 name: Docker
 
 on:
-  # push:
-  #   branches:
-  #     - master
-  #   tags:
-  #     - v[0-9]+.[0-9]+.[0-9]+
-  pull_request:
+  push:
+    tags:
+    - '*'
 
 jobs:
   docker:
@@ -20,7 +17,7 @@ jobs:
       - name: Calculate Docker image tags
         id: tags
         env:
-          DOCKER_IMAGES: "ghcr.io/dexidp/dex dexidp/dex"
+          DOCKER_IMAGES: "ghcr.io/loafoe/dex"
         run: |
           case $GITHUB_REF in
             refs/tags/*)  VERSION=${GITHUB_REF#refs/tags/};;
@@ -75,7 +72,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          platforms: linux/amd64,linux/arm/v7,linux/arm64,linux/ppc64le
+          platforms: linux/amd64,linux/arm64
           # cache-from: type=gha
           # cache-to: type=gha,mode=max
           push: ${{ github.event_name == 'push' }}
@@ -98,7 +95,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.9.0
         with:
-          image-ref: "ghcr.io/dexidp/dex:${{ steps.tags.outputs.version }}"
+          image-ref: "ghcr.io/loafoe/dex:${{ steps.tags.outputs.version }}"
           format: "template"
           template: "@/contrib/sarif.tpl"
           output: "trivy-results.sarif"
