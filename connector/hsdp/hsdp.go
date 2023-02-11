@@ -25,6 +25,9 @@ type Config struct {
 	ClientSecret   string `json:"clientSecret"`
 	RedirectURI    string `json:"redirectURI"`
 
+	// Extensions implemented by HSP IAM
+	Extension
+
 	// Causes client_secret to be passed as POST parameters instead of basic
 	// auth. This is specifically "NOT RECOMMENDED" by the OAuth2 RFC, but some
 	// providers require it.
@@ -59,6 +62,10 @@ type Config struct {
 	PromptType string `json:"promptType"`
 }
 
+type Extension struct {
+	IntrosepctionEndpoint string `json:"introspection_endpoint"`
+}
+
 // connectorData stores information for sessions authenticated by this connector
 type connectorData struct {
 	RefreshToken []byte
@@ -79,6 +86,11 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 
 	endpoint := provider.Endpoint()
 
+	// HSP IAM extension
+	if err := provider.Claims(&c.Extension); err != nil {
+		return nil, fmt.Errorf("failed to get introspection endpoint: %v", err)
+	}
+
 	if c.BasicAuthUnsupported != nil {
 		// Setting "basicAuthUnsupported" always overrides our detection.
 		if *c.BasicAuthUnsupported {
@@ -90,7 +102,7 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 	if len(c.Scopes) > 0 {
 		scopes = append(scopes, c.Scopes...)
 	} else {
-		scopes = append(scopes, "profile", "email")
+		scopes = append(scopes, "profile", "email", "groups")
 	}
 
 	// PromptType should be "consent" by default, if not set
@@ -100,8 +112,9 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 
 	clientID := c.ClientID
 	return &hsdpConnector{
-		provider:    provider,
-		redirectURI: c.RedirectURI,
+		provider:      provider,
+		redirectURI:   c.RedirectURI,
+		introspectURI: c.IntrosepctionEndpoint,
 		oauth2Config: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: c.ClientSecret,
@@ -135,6 +148,7 @@ var (
 type hsdpConnector struct {
 	provider                  *oidc.Provider
 	redirectURI               string
+	introspectURI             string
 	oauth2Config              *oauth2.Config
 	verifier                  *oidc.IDTokenVerifier
 	cancel                    context.CancelFunc
@@ -244,6 +258,12 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 		}
 	}
 
+	// Introspect so we can get group assignments
+	introspectResponse, err := c.introspect(ctx, oauth2.StaticTokenSource(token))
+	if err != nil {
+		return identity, fmt.Errorf("hsdp: introspect failed: %w", err)
+	}
+
 	userNameKey := "name"
 	if c.userNameKey != "" {
 		userNameKey = c.userNameKey
@@ -325,6 +345,13 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 					return identity, errors.New("malformed \"groups\" claim")
 				}
 			}
+		}
+	}
+
+	// HSP IAM groups
+	for _, org := range introspectResponse.Organizations.OrganizationList {
+		if org.OrganizationID == introspectResponse.Organizations.ManagingOrganization { // Add groups from managing ORG
+			identity.Groups = append(identity.Groups, org.Groups...)
 		}
 	}
 
