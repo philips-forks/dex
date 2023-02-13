@@ -24,6 +24,7 @@ type Config struct {
 	ClientID       string `json:"clientID"`
 	ClientSecret   string `json:"clientSecret"`
 	RedirectURI    string `json:"redirectURI"`
+	TrustedOrgID   string `json:"trustedOrgID"`
 
 	// Extensions implemented by HSP IAM
 	Extension
@@ -116,6 +117,7 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 		provider:      provider,
 		redirectURI:   c.RedirectURI,
 		introspectURI: c.IntrosepctionEndpoint,
+		trustedOrgID:  c.TrustedOrgID,
 		oauth2Config: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: c.ClientSecret,
@@ -150,6 +152,7 @@ type hsdpConnector struct {
 	provider                  *oidc.Provider
 	redirectURI               string
 	introspectURI             string
+	trustedOrgID              string
 	oauth2Config              *oauth2.Config
 	verifier                  *oidc.IDTokenVerifier
 	cancel                    context.CancelFunc
@@ -349,9 +352,9 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 		}
 	}
 
-	// HSP IAM groups
+	// HSP IAM groups from trustedOrgID
 	for _, org := range introspectResponse.Organizations.OrganizationList {
-		if org.OrganizationID == introspectResponse.Organizations.ManagingOrganization { // Add groups from managing ORG
+		if org.OrganizationID == c.trustedOrgID { // Add groups from managing ORG
 			identity.Groups = append(identity.Groups, org.Groups...)
 		}
 	}
