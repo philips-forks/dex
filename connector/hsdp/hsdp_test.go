@@ -230,7 +230,8 @@ func setupServer(tok map[string]interface{}) (*httptest.Server, error) {
 		w.Header().Add("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(&iam.IntrospectResponse{
 			Active:   true,
-			Username: "foo",
+			Username: "subvalue",
+			Sub:      "subvalue",
 		})
 	})
 
