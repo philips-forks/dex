@@ -374,12 +374,15 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 	}
 
 	emailVerified, found := claims["email_verified"].(bool)
-	if !found {
+	if !found && !c.isSAML() {
 		if c.insecureSkipEmailVerified {
 			emailVerified = true
 		} else if hasEmailScope {
 			return identity, errors.New("missing \"email_verified\" claim")
 		}
+	}
+	if c.isSAML() { // For SAML2 we claim email verification for now
+		emailVerified = true
 	}
 	hostedDomain, _ := claims["hd"].(string)
 
