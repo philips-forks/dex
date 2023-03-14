@@ -201,13 +201,17 @@ func (c *hsdpConnector) LoginURL(s connector.Scopes, callbackURL, state string) 
 
 	// SAML2 flow
 	if c.isSAML() {
+		cbu, _ := url.Parse(callbackURL)
+		values := cbu.Query()
+		values.Set("state", state)
+		cbu.RawQuery = values.Encode()
+
 		u, err := url.Parse(c.samlLoginURL)
 		if err != nil {
 			return "", fmt.Errorf("invalid SAML2 login URL: %w", err)
 		}
-		values := u.Query()
-		values.Set("state", state)
-		values.Set("redirect_uri", callbackURL)
+		values = u.Query()
+		values.Set("redirect_uri", cbu.String())
 		u.RawQuery = values.Encode()
 		return u.String(), nil
 	}
@@ -314,18 +318,20 @@ func (c *hsdpConnector) Refresh(ctx context.Context, s connector.Scopes, identit
 }
 
 func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.Identity, token *oauth2.Token) (connector.Identity, error) {
-	rawIDToken, ok := token.Extra("id_token").(string)
-	if !ok {
-		return identity, errors.New("oidc: no id_token in token response")
-	}
-	idToken, err := c.verifier.Verify(ctx, rawIDToken)
-	if err != nil {
-		return identity, fmt.Errorf("oidc: failed to verify ID Token: %v", err)
-	}
-
 	var claims map[string]interface{}
-	if err := idToken.Claims(&claims); err != nil {
-		return identity, fmt.Errorf("oidc: failed to decode claims: %v", err)
+
+	if !c.isSAML() {
+		rawIDToken, ok := token.Extra("id_token").(string)
+		if !ok {
+			return identity, errors.New("oidc: no id_token in token response")
+		}
+		idToken, err := c.verifier.Verify(ctx, rawIDToken)
+		if err != nil {
+			return identity, fmt.Errorf("oidc: failed to verify ID Token: %v", err)
+		}
+		if err := idToken.Claims(&claims); err != nil {
+			return identity, fmt.Errorf("oidc: failed to decode claims: %v", err)
+		}
 	}
 
 	// We immediately want to run getUserInfo if configured before we validate the claims
@@ -385,7 +391,6 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 				break
 			}
 		}
-
 		if !found {
 			return identity, fmt.Errorf("oidc: unexpected hd claim %v", hostedDomain)
 		}
@@ -401,7 +406,7 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 	}
 
 	identity = connector.Identity{
-		UserID:        idToken.Subject,
+		UserID:        introspectResponse.Username,
 		Username:      name,
 		Email:         email,
 		EmailVerified: emailVerified,
