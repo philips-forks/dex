@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -25,6 +28,7 @@ type Config struct {
 	ClientSecret   string `json:"clientSecret"`
 	RedirectURI    string `json:"redirectURI"`
 	TrustedOrgID   string `json:"trustedOrgID"`
+	SAML2LoginURL  string `json:"saml2LoginURL"`
 
 	// Extensions implemented by HSP IAM
 	Extension
@@ -118,6 +122,9 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 		redirectURI:   c.RedirectURI,
 		introspectURI: c.IntrosepctionEndpoint,
 		trustedOrgID:  c.TrustedOrgID,
+		samlLoginURL:  c.SAML2LoginURL,
+		clientID:      c.ClientID,
+		clientSecret:  c.ClientSecret,
 		oauth2Config: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: c.ClientSecret,
@@ -148,11 +155,23 @@ var (
 	_ connector.RefreshConnector  = (*hsdpConnector)(nil)
 )
 
+type tokenResponse struct {
+	Scope        string `json:"scope"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int64  `json:"expires_in"`
+	TokenType    string `json:"token_type"`
+	IDToken      string `json:"id_token"`
+}
+
 type hsdpConnector struct {
 	provider                  *oidc.Provider
 	redirectURI               string
 	introspectURI             string
 	trustedOrgID              string
+	samlLoginURL              string
+	clientID                  string
+	clientSecret              string
 	oauth2Config              *oauth2.Config
 	verifier                  *oidc.IDTokenVerifier
 	cancel                    context.CancelFunc
@@ -166,6 +185,10 @@ type hsdpConnector struct {
 	promptType                string
 }
 
+func (c *hsdpConnector) isSAML() bool {
+	return len(c.samlLoginURL) > 0
+}
+
 func (c *hsdpConnector) Close() error {
 	c.cancel()
 	return nil
@@ -174,6 +197,15 @@ func (c *hsdpConnector) Close() error {
 func (c *hsdpConnector) LoginURL(s connector.Scopes, callbackURL, state string) (string, error) {
 	if c.redirectURI != callbackURL {
 		return "", fmt.Errorf("expected callback URL %q did not match the URL in the config %q", callbackURL, c.redirectURI)
+	}
+
+	// SAML2 flow
+	if c.isSAML() {
+		_, err := url.Parse(c.samlLoginURL)
+		if err != nil {
+			return "", fmt.Errorf("invalid SAML2 login URL: %w", err)
+		}
+		return c.samlLoginURL, nil
 	}
 
 	var opts []oauth2.AuthCodeOption
@@ -208,6 +240,47 @@ func (c *hsdpConnector) HandleCallback(s connector.Scopes, r *http.Request) (ide
 	if errType := q.Get("error"); errType != "" {
 		return identity, &oauth2Error{errType, q.Get("error_description")}
 	}
+
+	// SAML2 flow
+	if c.isSAML() {
+		assertion := q.Get("assertion")
+		form := url.Values{}
+		form.Add("grant_type", "urn:ietf:params:oauth:grant-type:saml2-bearer")
+		form.Add("assertion", assertion)
+		requestBody := form.Encode()
+		req, _ := http.NewRequest(http.MethodPost, c.oauth2Config.Endpoint.TokenURL, io.NopCloser(strings.NewReader(requestBody)))
+		req.SetBasicAuth(c.clientID, c.clientSecret)
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Api-Version", "2")
+		req.ContentLength = int64(len(requestBody))
+
+		resp, err := doRequest(r.Context(), req)
+		if err != nil {
+			return identity, err
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return identity, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return identity, fmt.Errorf("%s: %s", resp.Status, body)
+		}
+
+		var tr tokenResponse
+		if err := json.Unmarshal(body, &tr); err != nil {
+			return identity, fmt.Errorf("hsdp: failed to token response: %v", err)
+		}
+		token := &oauth2.Token{
+			AccessToken:  tr.AccessToken,
+			TokenType:    tr.TokenType,
+			RefreshToken: tr.RefreshToken,
+			Expiry:       time.Unix(tr.ExpiresIn, 0),
+		}
+		return c.createIdentity(r.Context(), identity, token)
+	}
+
 	token, err := c.oauth2Config.Exchange(r.Context(), q.Get("code"))
 	if err != nil {
 		return identity, fmt.Errorf("oidc: failed to get token: %v", err)
