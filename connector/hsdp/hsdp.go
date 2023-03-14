@@ -201,11 +201,15 @@ func (c *hsdpConnector) LoginURL(s connector.Scopes, callbackURL, state string) 
 
 	// SAML2 flow
 	if c.isSAML() {
-		_, err := url.Parse(c.samlLoginURL)
+		u, err := url.Parse(c.samlLoginURL)
 		if err != nil {
 			return "", fmt.Errorf("invalid SAML2 login URL: %w", err)
 		}
-		return c.samlLoginURL, nil
+		values := u.Query()
+		values.Set("state", state)
+		values.Set("redirect_uri", callbackURL)
+		u.RawQuery = values.Encode()
+		return u.String(), nil
 	}
 
 	var opts []oauth2.AuthCodeOption
