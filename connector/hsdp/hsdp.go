@@ -409,7 +409,7 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 	}
 
 	identity = connector.Identity{
-		UserID:        introspectResponse.Username,
+		UserID:        introspectResponse.Sub,
 		Username:      name,
 		Email:         email,
 		EmailVerified: emailVerified,
