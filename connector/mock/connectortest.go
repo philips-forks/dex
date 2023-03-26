@@ -66,6 +66,10 @@ func (m *Callback) Refresh(ctx context.Context, s connector.Scopes, identity con
 	return m.Identity, nil
 }
 
+func (m *Callback) ExtendPayload(payload []byte, connectorData []byte) ([]byte, error) {
+	return payload, nil
+}
+
 // CallbackConfig holds the configuration parameters for a connector which requires no interaction.
 type CallbackConfig struct{}
 

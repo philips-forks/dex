@@ -74,6 +74,7 @@ type Extension struct {
 // connectorData stores information for sessions authenticated by this connector
 type connectorData struct {
 	RefreshToken []byte
+	Assertion    []byte
 }
 
 // Open returns a connector which can be used to login users through an upstream
@@ -286,7 +287,7 @@ func (c *hsdpConnector) HandleCallback(s connector.Scopes, r *http.Request) (ide
 			RefreshToken: tr.RefreshToken,
 			Expiry:       time.Unix(tr.ExpiresIn, 0),
 		}
-		return c.createIdentity(r.Context(), identity, token)
+		return c.createIdentity(r.Context(), identity, token, r)
 	}
 
 	token, err := c.oauth2Config.Exchange(r.Context(), q.Get("code"))
@@ -294,7 +295,7 @@ func (c *hsdpConnector) HandleCallback(s connector.Scopes, r *http.Request) (ide
 		return identity, fmt.Errorf("oidc: failed to get token: %v", err)
 	}
 
-	return c.createIdentity(r.Context(), identity, token)
+	return c.createIdentity(r.Context(), identity, token, r)
 }
 
 // Refresh is used to refresh a session with the refresh token provided by the IdP
@@ -314,13 +315,20 @@ func (c *hsdpConnector) Refresh(ctx context.Context, s connector.Scopes, identit
 		return identity, fmt.Errorf("oidc: failed to get refresh token: %v", err)
 	}
 
-	return c.createIdentity(ctx, identity, token)
+	return c.createIdentity(ctx, identity, token, nil)
 }
 
-func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.Identity, token *oauth2.Token) (connector.Identity, error) {
+func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.Identity, token *oauth2.Token, r *http.Request) (connector.Identity, error) {
 	var claims map[string]interface{}
 
+	cd := connectorData{}
+
 	if !c.isSAML() {
+		// Save assertion
+		q := r.URL.Query()
+		assertion := q.Get("assertion")
+		cd.Assertion = []byte(assertion)
+
 		rawIDToken, ok := token.Extra("id_token").(string)
 		if !ok {
 			return identity, errors.New("oidc: no id_token in token response")
@@ -399,9 +407,7 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 		}
 	}
 
-	cd := connectorData{
-		RefreshToken: []byte(token.RefreshToken),
-	}
+	cd.RefreshToken = []byte(token.RefreshToken)
 
 	connData, err := json.Marshal(&cd)
 	if err != nil {
