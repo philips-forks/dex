@@ -100,7 +100,7 @@ type RefreshConnector interface {
 	Refresh(ctx context.Context, s Scopes, identity Identity) (Identity, error)
 }
 
-// PayloadEnhancer allows connectors to enhance the payload before signing
-type PayloadEnhancer interface {
-	EnhancePayload(payload []byte, connectorData any) ([]byte, error)
+// PayloadExtender allows connectors to enhance the payload before signing
+type PayloadExtender interface {
+	ExtendPayload(scopes []string, payload []byte, connectorData []byte) ([]byte, error)
 }
