@@ -410,12 +410,14 @@ func (s *Server) newIDToken(clientID string, claims storage.Claims, scopes []str
 	}
 
 	switch c := conn.Connector.(type) {
-	case connector.PayloadEnhancer:
-		enhancedPayload, err := c.EnhancePayload(payload, connectorData)
+	case connector.PayloadExtender:
+		extendedPayload, err := c.ExtendPayload(payload, connectorData)
 		if err != nil {
-			return "", expiry, fmt.Errorf("error enhancing payload: %w", err)
+			s.logger.Warnf("failed to enhance payload: %w", err)
+			break
 		}
-		payload = enhancedPayload
+		payload = extendedPayload
+	default:
 	}
 
 	if idToken, err = signPayload(signingKey, signingAlg, payload); err != nil {
