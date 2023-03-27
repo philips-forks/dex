@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/philips-software/go-hsdp-api/iam"
 	"io"
 	"net/http"
 	"net/url"
@@ -76,6 +77,7 @@ type connectorData struct {
 	RefreshToken []byte
 	AccessToken  []byte
 	Assertion    []byte
+	Introspect   iam.IntrospectResponse
 }
 
 // Open returns a connector which can be used to login users through an upstream
@@ -410,6 +412,7 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 
 	cd.RefreshToken = []byte(token.RefreshToken)
 	cd.AccessToken = []byte(token.AccessToken)
+	cd.Introspect = *introspectResponse
 
 	connData, err := json.Marshal(&cd)
 	if err != nil {

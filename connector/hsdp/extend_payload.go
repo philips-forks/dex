@@ -21,10 +21,15 @@ func (c *hsdpConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 		return payload, err
 	}
 	for _, scope := range scopes {
-		if scope == "iam_access_token" {
+		if scope == "federated:id" {
 			originalClaims["iam_access_token"] = string(cd.AccessToken)
 		}
 	}
+	// Experimental tenants
+	var teams []string
+	teams = append(teams, cd.Introspect.Organizations.ManagingOrganization)
+	originalClaims["teams"] = teams
+
 	extendedPayload, err := json.Marshal(originalClaims)
 	if err != nil {
 		return payload, err
