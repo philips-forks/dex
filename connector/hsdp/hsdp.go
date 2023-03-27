@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/philips-software/go-hsdp-api/iam"
+
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 
@@ -46,7 +48,7 @@ type Config struct {
 	// If this field is nonempty, only users from a listed domain will be allowed to log in
 	HostedDomains []string `json:"hostedDomains"`
 
-	// Override the value of email_verifed to true in the returned claims
+	// Override the value of email_verified to true in the returned claims
 	InsecureSkipEmailVerified bool `json:"insecureSkipEmailVerified"`
 
 	// InsecureEnableGroups enables groups claims. This is disabled by default until https://github.com/dexidp/dex/issues/1065 is resolved
@@ -60,7 +62,7 @@ type Config struct {
 	// Configurable key which contains the user id claim
 	UserIDKey string `json:"userIDKey"`
 
-	// Configurable key which contains the user name claim
+	// Configurable key which contains the username claim
 	UserNameKey string `json:"userNameKey"`
 
 	// PromptType will be used fot the prompt parameter (when offline_access, by default prompt=consent)
@@ -68,7 +70,7 @@ type Config struct {
 }
 
 type Extension struct {
-	IntrosepctionEndpoint string `json:"introspection_endpoint"`
+	IntrospectionEndpoint string `json:"introspection_endpoint"`
 }
 
 // connectorData stores information for sessions authenticated by this connector
@@ -76,9 +78,10 @@ type connectorData struct {
 	RefreshToken []byte
 	AccessToken  []byte
 	Assertion    []byte
+	Introspect   iam.IntrospectResponse
 }
 
-// Open returns a connector which can be used to login users through an upstream
+// Open returns a connector which can be used to log in users through an upstream
 // OpenID Connect provider.
 func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, err error) {
 	parentContext, cancel := context.WithCancel(context.Background())
@@ -122,7 +125,7 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 	return &hsdpConnector{
 		provider:      provider,
 		redirectURI:   c.RedirectURI,
-		introspectURI: c.IntrosepctionEndpoint,
+		introspectURI: c.IntrospectionEndpoint,
 		trustedOrgID:  c.TrustedOrgID,
 		samlLoginURL:  c.SAML2LoginURL,
 		clientID:      c.ClientID,
@@ -324,23 +327,11 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 
 	cd := connectorData{}
 
-	if !c.isSAML() {
+	if c.isSAML() && r != nil {
 		// Save assertion
 		q := r.URL.Query()
 		assertion := q.Get("assertion")
 		cd.Assertion = []byte(assertion)
-
-		rawIDToken, ok := token.Extra("id_token").(string)
-		if !ok {
-			return identity, errors.New("oidc: no id_token in token response")
-		}
-		idToken, err := c.verifier.Verify(ctx, rawIDToken)
-		if err != nil {
-			return identity, fmt.Errorf("oidc: failed to verify ID Token: %v", err)
-		}
-		if err := idToken.Claims(&claims); err != nil {
-			return identity, fmt.Errorf("oidc: failed to decode claims: %v", err)
-		}
 	}
 
 	// We immediately want to run getUserInfo if configured before we validate the claims
@@ -410,6 +401,7 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 
 	cd.RefreshToken = []byte(token.RefreshToken)
 	cd.AccessToken = []byte(token.AccessToken)
+	cd.Introspect = *introspectResponse
 
 	connData, err := json.Marshal(&cd)
 	if err != nil {
