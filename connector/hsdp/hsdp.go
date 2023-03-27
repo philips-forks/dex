@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/philips-software/go-hsdp-api/iam"
+
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 
@@ -76,6 +78,7 @@ type connectorData struct {
 	RefreshToken []byte
 	AccessToken  []byte
 	Assertion    []byte
+	Introspect   iam.IntrospectResponse
 }
 
 // Open returns a connector which can be used to login users through an upstream
@@ -324,7 +327,7 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 
 	cd := connectorData{}
 
-	if !c.isSAML() {
+	if c.isSAML() && r != nil {
 		// Save assertion
 		q := r.URL.Query()
 		assertion := q.Get("assertion")
@@ -410,6 +413,7 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 
 	cd.RefreshToken = []byte(token.RefreshToken)
 	cd.AccessToken = []byte(token.AccessToken)
+	cd.Introspect = *introspectResponse
 
 	connData, err := json.Marshal(&cd)
 	if err != nil {
