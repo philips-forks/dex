@@ -2,6 +2,7 @@ package hsdp
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/dexidp/dex/connector"
@@ -30,6 +31,23 @@ func (c *hsdpConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 		}
 	}
 	originalClaims["moid"] = cd.Introspect.Organizations.ManagingOrganization
+	// Rewrite subject
+	var orgSubs []string
+	for _, org := range cd.Introspect.Organizations.OrganizationList {
+		if org.OrganizationID != cd.TrustedIDPOrg {
+			continue
+		}
+		for _, group := range org.Groups {
+			if strings.HasPrefix(group, "sub-") {
+				orgSubs = append(orgSubs, fmt.Sprintf("sub:%s", strings.TrimPrefix(group, "sub-")))
+			}
+		}
+	}
+	if len(orgSubs) > 0 {
+		subs := strings.Join(orgSubs, ":")
+		origSub := originalClaims["sub"].(string)
+		originalClaims["sub"] = fmt.Sprintf("%s:id:%s", subs, origSub)
+	}
 
 	extendedPayload, err := json.Marshal(originalClaims)
 	if err != nil {
