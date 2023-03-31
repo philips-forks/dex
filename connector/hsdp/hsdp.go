@@ -78,6 +78,7 @@ type connectorData struct {
 	RefreshToken []byte
 	AccessToken  []byte
 	Assertion    []byte
+	Groups       []string
 	Introspect   iam.IntrospectResponse
 }
 
@@ -403,17 +404,11 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 	cd.AccessToken = []byte(token.AccessToken)
 	cd.Introspect = *introspectResponse
 
-	connData, err := json.Marshal(&cd)
-	if err != nil {
-		return identity, fmt.Errorf("oidc: failed to encode connector data: %v", err)
-	}
-
 	identity = connector.Identity{
 		UserID:        introspectResponse.Sub,
 		Username:      name,
 		Email:         email,
 		EmailVerified: emailVerified,
-		ConnectorData: connData,
 	}
 
 	if c.userIDKey != "" {
@@ -442,7 +437,15 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 		if org.OrganizationID == c.trustedOrgID { // Add groups from managing ORG
 			identity.Groups = append(identity.Groups, org.Groups...)
 		}
+		cd.Groups = identity.Groups
 	}
+
+	// Attach connector data
+	connData, err := json.Marshal(&cd)
+	if err != nil {
+		return identity, fmt.Errorf("oidc: failed to encode connector data: %v", err)
+	}
+	identity.ConnectorData = connData
 
 	return identity, nil
 }
