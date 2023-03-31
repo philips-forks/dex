@@ -27,93 +27,23 @@ func TestHandleCallback(t *testing.T) {
 	t.Helper()
 
 	tests := []struct {
-		name                      string
-		userIDKey                 string
-		userNameKey               string
-		insecureSkipEmailVerified bool
-		scopes                    []string
-		expectUserID              string
-		expectUserName            string
-		expectedEmailField        string
-		token                     map[string]interface{}
+		name           string
+		scopes         []string
+		expectUserID   string
+		expectUserName string
+		token          map[string]interface{}
 	}{
 		{
-			name:               "simpleCase",
-			userIDKey:          "", // not configured
-			userNameKey:        "", // not configured
-			expectUserID:       "subvalue",
-			expectUserName:     "namevalue",
-			expectedEmailField: "emailvalue",
+			name:           "simpleCase",
+			expectUserID:   "subvalue",
+			expectUserName: "username",
 			token: map[string]interface{}{
-				"sub":            "subvalue",
-				"name":           "namevalue",
-				"email":          "emailvalue",
-				"email_verified": true,
-			},
-		},
-		{
-			name:                      "email_verified not in claims, configured to be skipped",
-			insecureSkipEmailVerified: true,
-			expectUserID:              "subvalue",
-			expectUserName:            "namevalue",
-			expectedEmailField:        "emailvalue",
-			token: map[string]interface{}{
-				"sub":   "subvalue",
-				"name":  "namevalue",
-				"email": "emailvalue",
-			},
-		},
-		{
-			name:               "withUserIDKey",
-			userIDKey:          "name",
-			expectUserID:       "namevalue",
-			expectUserName:     "namevalue",
-			expectedEmailField: "emailvalue",
-			token: map[string]interface{}{
-				"sub":            "subvalue",
-				"name":           "namevalue",
-				"email":          "emailvalue",
-				"email_verified": true,
-			},
-		},
-		{
-			name:               "withUserNameKey",
-			userNameKey:        "user_name",
-			expectUserID:       "subvalue",
-			expectUserName:     "username",
-			expectedEmailField: "emailvalue",
-			token: map[string]interface{}{
-				"sub":            "subvalue",
-				"user_name":      "username",
-				"email":          "emailvalue",
-				"email_verified": true,
-			},
-		},
-		{
-			name:                      "emptyEmailScope",
-			expectUserID:              "subvalue",
-			expectUserName:            "namevalue",
-			expectedEmailField:        "",
-			scopes:                    []string{"groups"},
-			insecureSkipEmailVerified: true,
-			token: map[string]interface{}{
-				"sub":       "subvalue",
-				"name":      "namevalue",
-				"user_name": "username",
-			},
-		},
-		{
-			name:                      "emptyEmailScopeButEmailProvided",
-			expectUserID:              "subvalue",
-			expectUserName:            "namevalue",
-			expectedEmailField:        "emailvalue",
-			scopes:                    []string{"groups"},
-			insecureSkipEmailVerified: true,
-			token: map[string]interface{}{
-				"sub":       "subvalue",
-				"name":      "namevalue",
-				"user_name": "username",
-				"email":     "emailvalue",
+				"sub":         "subvalue",
+				"name":        "namevalue",
+				"username":    "username",
+				"email":       "emailvalue",
+				"given_name":  "givenname",
+				"family_name": "familyname",
 			},
 		},
 	}
@@ -135,15 +65,12 @@ func TestHandleCallback(t *testing.T) {
 			serverURL := testServer.URL
 			basicAuth := true
 			config := Config{
-				Issuer:                    serverURL,
-				ClientID:                  "clientID",
-				ClientSecret:              "clientSecret",
-				Scopes:                    scopes,
-				RedirectURI:               fmt.Sprintf("%s/callback", serverURL),
-				UserIDKey:                 tc.userIDKey,
-				UserNameKey:               tc.userNameKey,
-				InsecureSkipEmailVerified: tc.insecureSkipEmailVerified,
-				BasicAuthUnsupported:      &basicAuth,
+				Issuer:               serverURL,
+				ClientID:             "clientID",
+				ClientSecret:         "clientSecret",
+				Scopes:               scopes,
+				RedirectURI:          fmt.Sprintf("%s/callback", serverURL),
+				BasicAuthUnsupported: &basicAuth,
 			}
 
 			conn, err := newConnector(config)
@@ -161,10 +88,15 @@ func TestHandleCallback(t *testing.T) {
 				t.Fatal("handle callback failed", err)
 			}
 
-			expectEquals(t, identity.UserID, tc.expectUserID)
-			expectEquals(t, identity.Username, tc.expectUserName)
-			expectEquals(t, identity.Email, tc.expectedEmailField)
-			expectEquals(t, identity.EmailVerified, true)
+			if !reflect.DeepEqual(identity.UserID, tc.expectUserID) {
+				t.Errorf("Expected %+v to equal %+v", identity.UserID, tc.expectUserID)
+			}
+			if !reflect.DeepEqual(identity.Username, tc.expectUserName) {
+				t.Errorf("Expected %+v to equal %+v", identity.Username, tc.expectUserName)
+			}
+			if !reflect.DeepEqual(identity.EmailVerified, true) {
+				t.Errorf("Expected %+v to equal %+v", identity.EmailVerified, true)
+			}
 		})
 	}
 }
@@ -200,6 +132,8 @@ func setupServer(tok map[string]interface{}) (*httptest.Server, error) {
 		tok["iss"] = url
 		tok["exp"] = time.Now().Add(time.Hour).Unix()
 		tok["aud"] = "clientID"
+		tok["user_name"] = "subvalue"
+		tok["name"] = "subvalue"
 		token, err := newToken(&jwk, tok)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -230,9 +164,13 @@ func setupServer(tok map[string]interface{}) (*httptest.Server, error) {
 		w.Header().Add("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(&iam.IntrospectResponse{
 			Active:   true,
-			Username: "subvalue",
-			Sub:      "subvalue",
+			Username: tok["username"].(string),
+			Sub:      tok["sub"].(string),
 		})
+	})
+	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tok)
 	})
 
 	return httptest.NewServer(mux), nil
@@ -302,10 +240,4 @@ func e(pub *rsa.PublicKey) string {
 func encode(payload []byte) string {
 	result := base64.URLEncoding.EncodeToString(payload)
 	return strings.TrimRight(result, "=")
-}
-
-func expectEquals(t *testing.T, a interface{}, b interface{}) {
-	if !reflect.DeepEqual(a, b) {
-		t.Errorf("Expected %+v to equal %+v", a, b)
-	}
 }
