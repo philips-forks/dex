@@ -54,17 +54,6 @@ type Config struct {
 	// InsecureEnableGroups enables groups claims. This is disabled by default until https://github.com/dexidp/dex/issues/1065 is resolved
 	InsecureEnableGroups bool `json:"insecureEnableGroups"`
 
-	// GetUserInfo uses the userinfo endpoint to get additional claims for
-	// the token. This is especially useful where upstreams return "thin"
-	// id tokens
-	GetUserInfo bool `json:"getUserInfo"`
-
-	// Configurable key which contains the user id claim
-	UserIDKey string `json:"userIDKey"`
-
-	// Configurable key which contains the username claim
-	UserNameKey string `json:"userNameKey"`
-
 	// PromptType will be used fot the prompt parameter (when offline_access, by default prompt=consent)
 	PromptType string `json:"promptType"`
 }
@@ -75,11 +64,12 @@ type Extension struct {
 
 // connectorData stores information for sessions authenticated by this connector
 type connectorData struct {
-	RefreshToken []byte
-	AccessToken  []byte
-	Assertion    []byte
-	Groups       []string
-	Introspect   iam.IntrospectResponse
+	RefreshToken  []byte
+	AccessToken   []byte
+	Assertion     []byte
+	Groups        []string
+	TrustedIDPOrg string
+	Introspect    iam.IntrospectResponse
 }
 
 // Open returns a connector which can be used to log in users through an upstream
@@ -148,10 +138,6 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 		cancel:                    cancel,
 		hostedDomains:             c.HostedDomains,
 		insecureSkipEmailVerified: c.InsecureSkipEmailVerified,
-		insecureEnableGroups:      c.InsecureEnableGroups,
-		getUserInfo:               c.GetUserInfo,
-		userIDKey:                 c.UserIDKey,
-		userNameKey:               c.UserNameKey,
 		promptType:                c.PromptType,
 	}, nil
 }
@@ -184,10 +170,6 @@ type hsdpConnector struct {
 	logger                    log.Logger
 	hostedDomains             []string
 	insecureSkipEmailVerified bool
-	insecureEnableGroups      bool
-	getUserInfo               bool
-	userIDKey                 string
-	userNameKey               string
 	promptType                string
 }
 
@@ -336,29 +318,17 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 	}
 
 	// We immediately want to run getUserInfo if configured before we validate the claims
-	if c.getUserInfo {
-		userInfo, err := c.provider.UserInfo(ctx, oauth2.StaticTokenSource(token))
-		if err != nil {
-			return identity, fmt.Errorf("oidc: error loading userinfo: %v", err)
-		}
-		if err := userInfo.Claims(&claims); err != nil {
-			return identity, fmt.Errorf("oidc: failed to decode userinfo claims: %v", err)
-		}
+	userInfo, err := c.provider.UserInfo(ctx, oauth2.StaticTokenSource(token))
+	if err != nil {
+		return identity, fmt.Errorf("oidc: error loading userinfo: %v", err)
 	}
-
+	if err := userInfo.Claims(&claims); err != nil {
+		return identity, fmt.Errorf("oidc: failed to decode userinfo claims: %v", err)
+	}
 	// Introspect so we can get group assignments
 	introspectResponse, err := c.introspect(ctx, oauth2.StaticTokenSource(token))
 	if err != nil {
 		return identity, fmt.Errorf("hsdp: introspect failed: %w", err)
-	}
-
-	userNameKey := "name"
-	if c.userNameKey != "" {
-		userNameKey = c.userNameKey
-	}
-	name, found := claims[userNameKey].(string)
-	if !found {
-		return identity, fmt.Errorf("missing \"%s\" claim", userNameKey)
 	}
 
 	hasEmailScope := false
@@ -374,14 +344,8 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 		return identity, errors.New("missing \"email\" claim")
 	}
 
-	emailVerified, found := claims["email_verified"].(bool)
-	if !found && !c.isSAML() {
-		if c.insecureSkipEmailVerified {
-			emailVerified = true
-		} else if hasEmailScope {
-			return identity, errors.New("missing \"email_verified\" claim")
-		}
-	}
+	emailVerified := true
+
 	if c.isSAML() { // For SAML2 we claim email verification for now
 		emailVerified = true
 	}
@@ -406,30 +370,9 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 
 	identity = connector.Identity{
 		UserID:        introspectResponse.Sub,
-		Username:      name,
+		Username:      introspectResponse.Username,
 		Email:         email,
 		EmailVerified: emailVerified,
-	}
-
-	if c.userIDKey != "" {
-		userID, found := claims[c.userIDKey].(string)
-		if !found {
-			return identity, fmt.Errorf("oidc: not found %v claim", c.userIDKey)
-		}
-		identity.UserID = userID
-	}
-
-	if c.insecureEnableGroups {
-		vs, ok := claims["groups"].([]interface{})
-		if ok {
-			for _, v := range vs {
-				if s, ok := v.(string); ok {
-					identity.Groups = append(identity.Groups, s)
-				} else {
-					return identity, errors.New("malformed \"groups\" claim")
-				}
-			}
-		}
 	}
 
 	// HSP IAM groups from trustedOrgID
@@ -439,6 +382,7 @@ func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.I
 		}
 		cd.Groups = identity.Groups
 	}
+	cd.TrustedIDPOrg = c.trustedOrgID
 
 	// Attach connector data
 	connData, err := json.Marshal(&cd)
