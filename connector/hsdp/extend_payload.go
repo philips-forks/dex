@@ -2,6 +2,7 @@ package hsdp
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/dexidp/dex/connector"
 )
@@ -24,11 +25,11 @@ func (c *hsdpConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 		if scope == "federated:id" {
 			originalClaims["iam_access_token"] = string(cd.AccessToken)
 		}
+		if scope == "groups" {
+			originalClaims["csgroups"] = strings.Join(cd.Groups, ",")
+		}
 	}
-	// Experimental tenants
-	var teams []string
-	teams = append(teams, cd.Introspect.Organizations.ManagingOrganization)
-	originalClaims["teams"] = teams
+	originalClaims["moid"] = cd.Introspect.Organizations.ManagingOrganization
 
 	extendedPayload, err := json.Marshal(originalClaims)
 	if err != nil {
