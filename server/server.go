@@ -83,6 +83,9 @@ type Config struct {
 	// If enabled, the connectors selection page will always be shown even if there's only one
 	AlwaysShowLoginScreen bool
 
+	// Allowed scopes with prefixes
+	AllowedScopePrefixes []string
+
 	RotateKeysAfter        time.Duration // Defaults to 6 hours.
 	IDTokensValidFor       time.Duration // Defaults to 24 hours
 	AuthRequestsValidFor   time.Duration // Defaults to 24 hours
@@ -173,6 +176,8 @@ type Server struct {
 	supportedResponseTypes map[string]bool
 
 	supportedGrantTypes []string
+
+	allowedScopePrefixes []string
 
 	now func() time.Time
 
@@ -269,6 +274,7 @@ func newServer(ctx context.Context, c Config, rotationStrategy rotationStrategy)
 		storage:                newKeyCacher(c.Storage, now),
 		supportedResponseTypes: supportedRes,
 		supportedGrantTypes:    supportedGrant,
+		allowedScopePrefixes:   c.AllowedScopePrefixes,
 		idTokensValidFor:       value(c.IDTokensValidFor, 24*time.Hour),
 		authRequestsValidFor:   value(c.AuthRequestsValidFor, 24*time.Hour),
 		deviceRequestsValidFor: value(c.DeviceRequestsValidFor, 5*time.Minute),

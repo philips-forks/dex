@@ -93,7 +93,7 @@ func tokenErr(w http.ResponseWriter, typ, description string, statusCode int) er
 	return nil
 }
 
-//nolint
+// nolint
 const (
 	errInvalidRequest          = "invalid_request"
 	errUnauthorizedClient      = "unauthorized_client"
@@ -508,6 +508,11 @@ func (s *Server) parseAuthorizationRequest(r *http.Request) (*storage.AuthReques
 		default:
 			peerID, ok := parseCrossClientScope(scope)
 			if !ok {
+				for _, prefix := range s.allowedScopePrefixes {
+					if strings.HasPrefix(scope, prefix) {
+						continue
+					}
+				}
 				unrecognized = append(unrecognized, scope)
 				continue
 			}

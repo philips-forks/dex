@@ -275,6 +275,7 @@ func runServe(options serveOptions) error {
 		AlwaysShowLoginScreen:  c.OAuth2.AlwaysShowLoginScreen,
 		PasswordConnector:      c.OAuth2.PasswordConnector,
 		AllowedOrigins:         c.Web.AllowedOrigins,
+		AllowedScopePrefixes:   c.AllowedScopePrefixes,
 		Issuer:                 c.Issuer,
 		Storage:                s,
 		Web:                    c.Frontend,
