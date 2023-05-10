@@ -44,6 +44,8 @@ type Config struct {
 
 	Scopes []string `json:"scopes"` // defaults to "profile" and "email"
 
+	TenantGroups []string `json:"tenantGroups"`
+
 	// Optional list of whitelisted domains when using Google
 	// If this field is nonempty, only users from a listed domain will be allowed to log in
 	HostedDomains []string `json:"hostedDomains"`
@@ -139,6 +141,7 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 		hostedDomains:             c.HostedDomains,
 		insecureSkipEmailVerified: c.InsecureSkipEmailVerified,
 		promptType:                c.PromptType,
+		tenantGroups:              c.TenantGroups,
 	}, nil
 }
 
@@ -169,6 +172,7 @@ type hsdpConnector struct {
 	cancel                    context.CancelFunc
 	logger                    log.Logger
 	hostedDomains             []string
+	tenantGroups              []string
 	insecureSkipEmailVerified bool
 	promptType                string
 }

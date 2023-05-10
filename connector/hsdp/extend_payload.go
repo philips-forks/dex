@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/dexidp/dex/connector"
 )
 
@@ -26,8 +28,23 @@ func (c *hsdpConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 		if scope == "federated:id" {
 			originalClaims["iam_access_token"] = string(cd.AccessToken)
 		}
-		if scope == "groups" {
-			originalClaims["csgroups"] = strings.Join(cd.Groups, ",")
+		// Experimental tenant scoping
+		if strings.HasPrefix(scope, "tenant:") {
+			group := strings.TrimPrefix(scope, "tenant:")
+			if slices.Contains(c.tenantGroups, group) {
+				var tenants []string
+				// Iterate through introspect and add OrgID as tenant when matched
+				for _, org := range cd.Introspect.Organizations.OrganizationList {
+					for _, orgGroup := range org.Groups {
+						if group == orgGroup {
+							tenants = append(tenants, org.OrganizationID)
+						}
+					}
+				}
+				if len(tenants) > 0 {
+					originalClaims[scope] = tenants
+				}
+			}
 		}
 	}
 	originalClaims["moid"] = cd.Introspect.Organizations.ManagingOrganization

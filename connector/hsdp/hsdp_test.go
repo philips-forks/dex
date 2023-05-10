@@ -38,12 +38,13 @@ func TestHandleCallback(t *testing.T) {
 			expectUserID:   "subvalue",
 			expectUserName: "username",
 			token: map[string]interface{}{
-				"sub":         "subvalue",
-				"name":        "namevalue",
-				"username":    "username",
-				"email":       "emailvalue",
-				"given_name":  "givenname",
-				"family_name": "familyname",
+				"sub":               "subvalue",
+				"name":              "namevalue",
+				"username":          "username",
+				"email":             "emailvalue",
+				"given_name":        "givenname",
+				"family_name":       "familyname",
+				"tenant:logreaders": []string{"foo", "bar"},
 			},
 		},
 	}
@@ -71,6 +72,7 @@ func TestHandleCallback(t *testing.T) {
 				Scopes:               scopes,
 				RedirectURI:          fmt.Sprintf("%s/callback", serverURL),
 				BasicAuthUnsupported: &basicAuth,
+				TenantGroups:         []string{"logreaders"},
 			}
 
 			conn, err := newConnector(config)
