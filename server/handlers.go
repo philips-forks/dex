@@ -1115,6 +1115,11 @@ func (s *Server) handlePasswordGrant(w http.ResponseWriter, r *http.Request, cli
 		default:
 			peerID, ok := parseCrossClientScope(scope)
 			if !ok {
+				for _, prefix := range s.allowedScopePrefixes {
+					if strings.HasPrefix(scope, prefix) {
+						continue
+					}
+				}
 				unrecognized = append(unrecognized, scope)
 				continue
 			}
