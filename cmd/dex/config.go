@@ -22,15 +22,14 @@ import (
 
 // Config is the config format for the main application.
 type Config struct {
-	Issuer               string    `json:"issuer"`
-	Storage              Storage   `json:"storage"`
-	Web                  Web       `json:"web"`
-	Telemetry            Telemetry `json:"telemetry"`
-	OAuth2               OAuth2    `json:"oauth2"`
-	GRPC                 GRPC      `json:"grpc"`
-	Expiry               Expiry    `json:"expiry"`
-	Logger               Logger    `json:"logger"`
-	AllowedScopePrefixes []string  `json:"allowedScopePrefixes"`
+	Issuer    string    `json:"issuer"`
+	Storage   Storage   `json:"storage"`
+	Web       Web       `json:"web"`
+	Telemetry Telemetry `json:"telemetry"`
+	OAuth2    OAuth2    `json:"oauth2"`
+	GRPC      GRPC      `json:"grpc"`
+	Expiry    Expiry    `json:"expiry"`
+	Logger    Logger    `json:"logger"`
 
 	Frontend server.WebConfig `json:"frontend"`
 
@@ -138,6 +137,8 @@ type OAuth2 struct {
 	AlwaysShowLoginScreen bool `json:"alwaysShowLoginScreen"`
 	// This is the connector that can be used for password grant
 	PasswordConnector string `json:"passwordConnector"`
+	// List of additional scope prefixes to allow
+	AllowedScopePrefixes []string `json:"allowedScopePrefixes"`
 }
 
 // Web is the config format for the HTTP server.

@@ -263,8 +263,8 @@ func runServe(options serveOptions) error {
 	if len(c.Web.AllowedOrigins) > 0 {
 		logger.Infof("config allowed origins: %s", c.Web.AllowedOrigins)
 	}
-	if len(c.AllowedScopePrefixes) > 0 {
-		logger.Infof("allowed scope prefixes: %s", strings.Join(c.AllowedScopePrefixes, ","))
+	if len(c.OAuth2.AllowedScopePrefixes) > 0 {
+		logger.Infof("config allowed scope prefixes: %s", strings.Join(c.OAuth2.AllowedScopePrefixes, ","))
 	} else {
 		logger.Infof("no scope prefixes allowed")
 	}
@@ -279,8 +279,8 @@ func runServe(options serveOptions) error {
 		SkipApprovalScreen:     c.OAuth2.SkipApprovalScreen,
 		AlwaysShowLoginScreen:  c.OAuth2.AlwaysShowLoginScreen,
 		PasswordConnector:      c.OAuth2.PasswordConnector,
+		AllowedScopePrefixes:   c.OAuth2.AllowedScopePrefixes,
 		AllowedOrigins:         c.Web.AllowedOrigins,
-		AllowedScopePrefixes:   c.AllowedScopePrefixes,
 		Issuer:                 c.Issuer,
 		Storage:                s,
 		Web:                    c.Frontend,
