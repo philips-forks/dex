@@ -202,26 +202,27 @@ func setupServers(tok map[string]interface{}) (dexmux *httptest.Server, iammux *
 		json.NewEncoder(w).Encode(up)
 	})
 
+	type exchange struct {
+		LoginID string      `json:"loginId"`
+		Profile iam.Profile `json:"profile"`
+	}
 	responseStruct := struct {
-		Total int        `json:"total"`
-		Entry []iam.User `json:"entry"`
+		Exchange        exchange `json:"exchange"`
+		ResponseCode    string   `json:"responseCode"`
+		ResponseMessage string   `json:"responseMessage"`
 	}{
-		Total: 1,
-		Entry: []iam.User{
-			{
-				PreferredCommunicationChannel: "email",
-				ID:                            "go-away",
-				ManagingOrganization:          "not-here",
-				EmailAddress:                  "ron.swanson@pawnee.gov",
-				Name: iam.Name{
-					Given:  "Ron",
-					Family: "Swanson",
-				},
+		Exchange: exchange{
+			LoginID: "rwanson",
+			Profile: iam.Profile{
+				GivenName:  "Ron",
+				FamilyName: "Swanson",
 			},
 		},
+		ResponseCode:    "OK",
+		ResponseMessage: "OK",
 	}
 
-	idmMUX.HandleFunc("/authorize/identity/User", func(w http.ResponseWriter, r *http.Request) {
+	idmMUX.HandleFunc("/security/users/subvalue", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(responseStruct)
 	})
