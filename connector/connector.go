@@ -103,3 +103,8 @@ type RefreshConnector interface {
 type TokenIdentityConnector interface {
 	TokenIdentity(ctx context.Context, subjectTokenType, subjectToken string) (Identity, error)
 }
+
+// PayloadExtender allows connectors to enhance the payload before signing
+type PayloadExtender interface {
+	ExtendPayload(scopes []string, payload []byte, connectorData []byte) ([]byte, error)
+}
