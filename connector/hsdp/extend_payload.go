@@ -57,8 +57,8 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 		}
 	}
 	// Rewrite name
-	if cd.User.Name.Given != "" {
-		originalClaims["name"] = fmt.Sprintf("%s %s", cd.User.Name.Given, cd.User.Name.Family)
+	if cd.User.GivenName != "" {
+		originalClaims["name"] = fmt.Sprintf("%s %s", cd.User.GivenName, cd.User.FamilyName)
 	}
 	if len(orgSubs) > 0 {
 		subs := strings.Join(orgSubs, ":")
