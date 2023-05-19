@@ -74,7 +74,7 @@ type ConnectorData struct {
 	Groups        []string
 	TrustedIDPOrg string
 	Introspect    iam.IntrospectResponse
-	User          iam.User
+	User          iam.Profile
 }
 
 // Open returns a connector which can be used to log in users through an upstream
@@ -353,7 +353,7 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 	}
 
 	// Get user info for profile details
-	user, _, err := c.client.WithToken(token.AccessToken).Users.GetUserByID(introspectResponse.Sub)
+	user, _, err := c.client.WithToken(token.AccessToken).Users.LegacyGetUserByUUID(introspectResponse.Sub)
 	if err != nil {
 		return identity, fmt.Errorf("hsdp: getUserByID failed: %w", err)
 	}
