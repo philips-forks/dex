@@ -14,7 +14,7 @@ import (
 	"golang.org/x/oauth2"
 )
 
-func (c *hsdpConnector) introspect(ctx context.Context, tokenSource oauth2.TokenSource) (*iam.IntrospectResponse, error) {
+func (c *HSDPConnector) introspect(ctx context.Context, tokenSource oauth2.TokenSource) (*iam.IntrospectResponse, error) {
 	if c.introspectURI == "" {
 		return nil, errors.New("hsdp: introspect endpoint is missing")
 	}

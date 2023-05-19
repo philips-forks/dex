@@ -28,11 +28,11 @@ type Config struct {
 	InsecureIssuer string `json:"insecureIssuer"`
 	ClientID       string `json:"clientID"`
 	ClientSecret   string `json:"clientSecret"`
-	Region         string `json:"region"`
-	Environment    string `json:"environment"`
 	RedirectURI    string `json:"redirectURI"`
 	TrustedOrgID   string `json:"trustedOrgID"`
 	SAML2LoginURL  string `json:"saml2LoginURL"`
+	IAMURL         string `json:"iamURL"`
+	IDMURL         string `json:"idmURL"`
 
 	// Extensions implemented by HSP IAM
 	Extension
@@ -66,8 +66,8 @@ type Extension struct {
 	IntrospectionEndpoint string `json:"introspection_endpoint"`
 }
 
-// connectorData stores information for sessions authenticated by this connector
-type connectorData struct {
+// ConnectorData stores information for sessions authenticated by this connector
+type ConnectorData struct {
 	RefreshToken  []byte
 	AccessToken   []byte
 	Assertion     []byte
@@ -120,15 +120,15 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 	client, err := iam.NewClient(nil, &iam.Config{
 		OAuth2ClientID: c.ClientID,
 		OAuth2Secret:   c.ClientSecret,
-		Region:         c.Region,
-		Environment:    c.Environment,
+		IAMURL:         c.IAMURL,
+		IDMURL:         c.IDMURL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error creating HSP IAM client: %w", err)
 	}
 
 	clientID := c.ClientID
-	return &hsdpConnector{
+	return &HSDPConnector{
 		provider:      provider,
 		client:        client,
 		redirectURI:   c.RedirectURI,
@@ -160,8 +160,8 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 }
 
 var (
-	_ connector.CallbackConnector = (*hsdpConnector)(nil)
-	_ connector.RefreshConnector  = (*hsdpConnector)(nil)
+	_ connector.CallbackConnector = (*HSDPConnector)(nil)
+	_ connector.RefreshConnector  = (*HSDPConnector)(nil)
 )
 
 type tokenResponse struct {
@@ -173,7 +173,7 @@ type tokenResponse struct {
 	IDToken      string `json:"id_token"`
 }
 
-type hsdpConnector struct {
+type HSDPConnector struct {
 	provider                  *oidc.Provider
 	client                    *iam.Client
 	redirectURI               string
@@ -194,16 +194,16 @@ type hsdpConnector struct {
 	promptType                string
 }
 
-func (c *hsdpConnector) isSAML() bool {
+func (c *HSDPConnector) isSAML() bool {
 	return len(c.samlLoginURL) > 0
 }
 
-func (c *hsdpConnector) Close() error {
+func (c *HSDPConnector) Close() error {
 	c.cancel()
 	return nil
 }
 
-func (c *hsdpConnector) LoginURL(s connector.Scopes, callbackURL, state string) (string, error) {
+func (c *HSDPConnector) LoginURL(s connector.Scopes, callbackURL, state string) (string, error) {
 	if c.redirectURI != callbackURL {
 		return "", fmt.Errorf("expected callback URL %q did not match the URL in the config %q", callbackURL, c.redirectURI)
 	}
@@ -252,7 +252,7 @@ func (e *oauth2Error) Error() string {
 	return e.error + ": " + e.errorDescription
 }
 
-func (c *hsdpConnector) HandleCallback(s connector.Scopes, r *http.Request) (identity connector.Identity, err error) {
+func (c *HSDPConnector) HandleCallback(s connector.Scopes, r *http.Request) (identity connector.Identity, err error) {
 	q := r.URL.Query()
 	if errType := q.Get("error"); errType != "" {
 		return identity, &oauth2Error{errType, q.Get("error_description")}
@@ -307,8 +307,8 @@ func (c *hsdpConnector) HandleCallback(s connector.Scopes, r *http.Request) (ide
 }
 
 // Refresh is used to refresh a session with the refresh token provided by the IdP
-func (c *hsdpConnector) Refresh(ctx context.Context, s connector.Scopes, identity connector.Identity) (connector.Identity, error) {
-	cd := connectorData{}
+func (c *HSDPConnector) Refresh(ctx context.Context, s connector.Scopes, identity connector.Identity) (connector.Identity, error) {
+	cd := ConnectorData{}
 	err := json.Unmarshal(identity.ConnectorData, &cd)
 	if err != nil {
 		return identity, fmt.Errorf("oidc: failed to unmarshal connector data: %v", err)
@@ -326,10 +326,10 @@ func (c *hsdpConnector) Refresh(ctx context.Context, s connector.Scopes, identit
 	return c.createIdentity(ctx, identity, token, nil)
 }
 
-func (c *hsdpConnector) createIdentity(ctx context.Context, identity connector.Identity, token *oauth2.Token, r *http.Request) (connector.Identity, error) {
+func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.Identity, token *oauth2.Token, r *http.Request) (connector.Identity, error) {
 	var claims map[string]interface{}
 
-	cd := connectorData{}
+	cd := ConnectorData{}
 
 	if c.isSAML() && r != nil {
 		// Save assertion
