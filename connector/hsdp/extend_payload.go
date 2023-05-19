@@ -8,8 +8,8 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-func (c *hsdpConnector) ExtendPayload(scopes []string, payload []byte, cdata []byte) ([]byte, error) {
-	var cd connectorData
+func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []byte) ([]byte, error) {
+	var cd ConnectorData
 	var originalClaims map[string]interface{}
 
 	c.logger.Info("ExtendPayload called")
