@@ -180,6 +180,17 @@ func (h *Handler) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+			if scc, ok := conn.(interface{ StateViaCookie() bool }); ok && scc.StateViaCookie() {
+				http.SetCookie(w, &http.Cookie{
+					Name:     hsdpStateCookie,
+					Value:    authReq.ID,
+					Path:     "/",
+					HttpOnly: true,
+					Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+					SameSite: http.SameSiteLaxMode,
+					MaxAge:   3600,
+				})
+			}
 			http.Redirect(w, r, callbackURL, http.StatusFound)
 		case connector.PasswordConnector:
 			loginURL := url.URL{
