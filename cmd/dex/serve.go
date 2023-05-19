@@ -266,6 +266,9 @@ func runServe(options serveOptions) error {
 	if len(c.Web.AllowedOrigins) > 0 {
 		logger.Infof("config allowed origins: %s", c.Web.AllowedOrigins)
 	}
+	if len(c.OAuth2.AllowedScopePrefixes) > 0 {
+		logger.Infof("config allowed scope prefixes: %s", strings.Join(c.OAuth2.AllowedScopePrefixes, ","))
+	}
 
 	// explicitly convert to UTC.
 	now := func() time.Time { return time.Now().UTC() }
@@ -280,6 +283,7 @@ func runServe(options serveOptions) error {
 		PasswordConnector:      c.OAuth2.PasswordConnector,
 		AllowedOrigins:         c.Web.AllowedOrigins,
 		AllowedHeaders:         c.Web.AllowedHeaders,
+		AllowedScopePrefixes:   c.OAuth2.AllowedScopePrefixes,
 		Issuer:                 c.Issuer,
 		Storage:                s,
 		Web:                    c.Frontend,
