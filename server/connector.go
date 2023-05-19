@@ -8,6 +8,7 @@ import (
 	"github.com/dexidp/dex/connector/github"
 	"github.com/dexidp/dex/connector/gitlab"
 	"github.com/dexidp/dex/connector/google"
+	"github.com/dexidp/dex/connector/hsdp"
 	"github.com/dexidp/dex/connector/keystone"
 	"github.com/dexidp/dex/connector/ldap"
 	"github.com/dexidp/dex/connector/linkedin"
@@ -32,6 +33,7 @@ var ConnectorsConfig = map[string]func() connectors.ConnectorConfig{
 	"github":          func() connectors.ConnectorConfig { return new(github.Config) },
 	"gitlab":          func() connectors.ConnectorConfig { return new(gitlab.Config) },
 	"google":          func() connectors.ConnectorConfig { return new(google.Config) },
+	"hsdp":            func() connectors.ConnectorConfig { return new(hsdp.Config) },
 	"oidc":            func() connectors.ConnectorConfig { return new(oidc.Config) },
 	"oauth":           func() connectors.ConnectorConfig { return new(oauth.Config) },
 	"saml":            func() connectors.ConnectorConfig { return new(saml.Config) },
