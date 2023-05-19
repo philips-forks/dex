@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/dexidp/dex/connector"
+	"github.com/dexidp/dex/server/connectors"
 	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/storage"
 )
@@ -27,6 +29,11 @@ type Issuer struct {
 
 	// Refresh persists and rotates refresh tokens.
 	Refresh *RefreshStore
+
+	// Connectors resolves the connector for a token's ConnectorID, giving
+	// SignIDToken a chance to offer it as a connector.PayloadExtender. Optional;
+	// callers that never issue connector-backed tokens (e.g. tests) can leave it nil.
+	Connectors *connectors.Cache
 }
 
 // NewIssuer wires an issuer from the shared dependencies.
@@ -179,6 +186,22 @@ func (i *Issuer) SignIDToken(ctx context.Context, auth Authorization, accessToke
 	payload, err := json.Marshal(tok)
 	if err != nil {
 		return "", expiry, fmt.Errorf("could not serialize claims: %v", err)
+	}
+
+	// Give the connector a chance to extend the payload with additional claims
+	// derived from the connector data it stashed during login.
+	if auth.ConnectorID != "" && len(auth.ConnectorData) > 0 && i.Connectors != nil {
+		conn, err := i.Connectors.Get(ctx, auth.ConnectorID)
+		if err == nil && conn.Connector != nil {
+			if extender, ok := conn.Connector.(connector.PayloadExtender); ok {
+				extended, err := extender.ExtendPayload(auth.Scopes, payload, auth.ConnectorData)
+				if err != nil {
+					i.logger.WarnContext(ctx, "failed to extend id token payload", "err", err)
+				} else {
+					payload = extended
+				}
+			}
+		}
 	}
 
 	idToken, err := i.signer.Sign(ctx, payload)
