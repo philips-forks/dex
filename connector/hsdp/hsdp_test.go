@@ -1,4 +1,4 @@
-package hsdp
+package hsdp_test
 
 import (
 	"bytes"
@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dexidp/dex/connector/hsdp"
 
 	"github.com/philips-software/go-hsdp-api/iam"
 	"github.com/sirupsen/logrus"
@@ -51,11 +53,13 @@ func TestHandleCallback(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			testServer, err := setupServer(tc.token)
+			testServer, iamServer, idmServer, err := setupServers(tc.token)
 			if err != nil {
 				t.Fatal("failed to setup test server", err)
 			}
 			defer testServer.Close()
+			defer iamServer.Close()
+			defer idmServer.Close()
 
 			var scopes []string
 			if len(tc.scopes) > 0 {
@@ -65,11 +69,13 @@ func TestHandleCallback(t *testing.T) {
 			}
 			serverURL := testServer.URL
 			basicAuth := true
-			config := Config{
+			config := hsdp.Config{
 				Issuer:               serverURL,
 				ClientID:             "clientID",
 				ClientSecret:         "clientSecret",
 				Scopes:               scopes,
+				IAMURL:               iamServer.URL,
+				IDMURL:               idmServer.URL,
 				RedirectURI:          fmt.Sprintf("%s/callback", serverURL),
 				BasicAuthUnsupported: &basicAuth,
 				TenantGroups:         []string{"logreaders"},
@@ -103,10 +109,10 @@ func TestHandleCallback(t *testing.T) {
 	}
 }
 
-func setupServer(tok map[string]interface{}) (*httptest.Server, error) {
+func setupServers(tok map[string]interface{}) (dexmux *httptest.Server, iammux *httptest.Server, idmmux *httptest.Server, err error) {
 	key, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate rsa key: %v", err)
+		return nil, nil, nil, fmt.Errorf("failed to generate rsa key: %v", err)
 	}
 
 	jwk := jose.JSONWebKey{
@@ -115,6 +121,7 @@ func setupServer(tok map[string]interface{}) (*httptest.Server, error) {
 		Algorithm: "RSA",
 	}
 
+	// DEX Server
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/keys", func(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +182,51 @@ func setupServer(tok map[string]interface{}) (*httptest.Server, error) {
 		json.NewEncoder(w).Encode(tok)
 	})
 
-	return httptest.NewServer(mux), nil
+	up := struct {
+		Status string
+	}{
+		Status: "OK",
+	}
+
+	// IAM Server
+	iamMUX := http.NewServeMux()
+	iamMUX.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(up)
+	})
+
+	// IDM Server
+	idmMUX := http.NewServeMux()
+	idmMUX.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(up)
+	})
+
+	responseStruct := struct {
+		Total int        `json:"total"`
+		Entry []iam.User `json:"entry"`
+	}{
+		Total: 1,
+		Entry: []iam.User{
+			{
+				PreferredCommunicationChannel: "email",
+				ID:                            "go-away",
+				ManagingOrganization:          "not-here",
+				EmailAddress:                  "ron.swanson@pawnee.gov",
+				Name: iam.Name{
+					Given:  "Ron",
+					Family: "Swanson",
+				},
+			},
+		},
+	}
+
+	idmMUX.HandleFunc("/authorize/identity/User", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(responseStruct)
+	})
+
+	return httptest.NewServer(mux), httptest.NewServer(iamMUX), httptest.NewServer(idmMUX), nil
 }
 
 func newToken(key *jose.JSONWebKey, claims map[string]interface{}) (string, error) {
@@ -201,19 +252,19 @@ func newToken(key *jose.JSONWebKey, claims map[string]interface{}) (string, erro
 	return signature.CompactSerialize()
 }
 
-func newConnector(config Config) (*hsdpConnector, error) {
+func newConnector(config hsdp.Config) (*hsdp.HSDPConnector, error) {
 	logger := logrus.New()
 	conn, err := config.Open("id", logger)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open: %v", err)
 	}
 
-	oidcConn, ok := conn.(*hsdpConnector)
+	hsdpConn, ok := conn.(*hsdp.HSDPConnector)
 	if !ok {
-		return nil, errors.New("failed to convert to hsdpConnector")
+		return nil, errors.New("failed to convert to HSDPConnector")
 	}
 
-	return oidcConn, nil
+	return hsdpConn, nil
 }
 
 func newRequestWithAuthCode(serverURL string, code string) (*http.Request, error) {
