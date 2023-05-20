@@ -60,6 +60,10 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 	if cd.User.GivenName != "" {
 		originalClaims["name"] = fmt.Sprintf("%s %s", cd.User.GivenName, cd.User.FamilyName)
 	}
+	// Inject username
+	if cd.Introspect.Username != "" {
+		originalClaims["username"] = cd.Introspect.Username
+	}
 	if len(orgSubs) > 0 {
 		subs := strings.Join(orgSubs, ":")
 		origSub := originalClaims["sub"].(string)
