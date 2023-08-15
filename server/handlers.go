@@ -1419,9 +1419,9 @@ func (s *Server) handleTokenExchange(w http.ResponseWriter, r *http.Request, cli
 	var expiry time.Time
 	switch requestedTokenType {
 	case tokenTypeID:
-		resp.AccessToken, expiry, err = s.newIDToken(client.ID, claims, scopes, "", "", "", connID)
+		resp.AccessToken, expiry, err = s.newIDToken(client.ID, claims, scopes, "", "", "", connID, identity.ConnectorData)
 	case tokenTypeAccess:
-		resp.AccessToken, expiry, err = s.newAccessToken(client.ID, claims, scopes, "", connID)
+		resp.AccessToken, expiry, err = s.newAccessToken(client.ID, claims, scopes, "", connID, identity.ConnectorData)
 	default:
 		s.tokenErrHelper(w, errRequestNotSupported, "Invalid requested_token_type.", http.StatusBadRequest)
 		return
