@@ -403,14 +403,27 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 		EmailVerified: emailVerified,
 	}
 
+	trustedOrgID := c.trustedOrgID // Default from config
+	// Check if we should use the trusted_tenant scope
+	for _, s := range c.oauth2Config.Scopes {
+		if strings.HasPrefix(s, "trusted_tenant:") {
+			var tenant string
+			if count, err := fmt.Sscanf(s, "trusted_tenant:%s", &tenant); err == nil && count == 1 {
+				trustedOrgID = tenant
+			} else {
+				c.logger.Infof("error parsing scope: %s", s)
+			}
+		}
+	}
+
 	// HSP IAM groups from trustedOrgID
 	for _, org := range introspectResponse.Organizations.OrganizationList {
-		if org.OrganizationID == c.trustedOrgID { // Add groups from managing ORG
+		if org.OrganizationID == trustedOrgID { // Add groups from managing ORG
 			identity.Groups = append(identity.Groups, org.Groups...)
 		}
 		cd.Groups = identity.Groups
 	}
-	cd.TrustedIDPOrg = c.trustedOrgID
+	cd.TrustedIDPOrg = trustedOrgID
 
 	// Attach connector data
 	connData, err := json.Marshal(&cd)

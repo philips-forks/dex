@@ -43,16 +43,16 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 			}
 		}
 	}
-	originalClaims["moid"] = cd.Introspect.Organizations.ManagingOrganization
+	originalClaims["mid"] = cd.Introspect.Organizations.ManagingOrganization
+	originalClaims["tid"] = cd.TrustedIDPOrg
 	// Rewrite subject
 	var orgSubs []string
 	for _, org := range cd.Introspect.Organizations.OrganizationList {
-		if org.OrganizationID != cd.TrustedIDPOrg {
-			continue
-		}
-		for _, group := range org.Groups {
-			if strings.HasPrefix(group, "sub-") {
-				orgSubs = append(orgSubs, fmt.Sprintf("sub:%s", strings.TrimPrefix(group, "sub-")))
+		if org.OrganizationID == cd.TrustedIDPOrg { // Add groups from trusted IDP org
+			for _, group := range org.Groups {
+				if strings.HasPrefix(group, "sub-") {
+					orgSubs = append(orgSubs, fmt.Sprintf("sub:%s", strings.TrimPrefix(group, "sub-")))
+				}
 			}
 		}
 	}
