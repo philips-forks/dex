@@ -82,6 +82,7 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 	// Inject username
 	if cd.Introspect.Username != "" {
 		originalClaims["username"] = cd.Introspect.Username
+		originalClaims["preferred_username"] = cd.Introspect.Username
 	}
 	if len(orgSubs) > 0 {
 		subs := strings.Join(orgSubs, ":")
