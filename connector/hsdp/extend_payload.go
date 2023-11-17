@@ -12,8 +12,6 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 	var cd ConnectorData
 	var originalClaims map[string]interface{}
 
-	c.logger.Info("ExtendPayload called")
-
 	trustedOrgID := c.trustedOrgID
 
 	if err := json.Unmarshal(cdata, &cd); err != nil {
@@ -22,6 +20,9 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 	if err := json.Unmarshal(payload, &originalClaims); err != nil {
 		return payload, err
 	}
+
+	c.logger.Info("ExtendPayload called for user: %s", cd.Introspect.Username)
+
 	for _, scope := range scopes {
 		if scope == "federated:id" {
 			originalClaims["iam_access_token"] = string(cd.AccessToken)
