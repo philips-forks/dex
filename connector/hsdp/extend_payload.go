@@ -21,7 +21,7 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 		return payload, err
 	}
 
-	c.logger.Info("ExtendPayload called for user: %s", cd.Introspect.Username)
+	c.logger.Info("ExtendPayload called for user: ", cd.Introspect.Username)
 
 	for _, scope := range scopes {
 		if scope == "federated:id" {
