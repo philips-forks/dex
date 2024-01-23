@@ -24,9 +24,6 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 	c.logger.Info("ExtendPayload called for user: ", cd.Introspect.Username)
 
 	for _, scope := range scopes {
-		if scope == "federated:id" {
-			originalClaims["iam_access_token"] = string(cd.AccessToken)
-		}
 		// Check if we should use the trusted_tenant scope
 		if strings.HasPrefix(scope, "trusted_tenant:") {
 			var tenant string
@@ -39,7 +36,11 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 
 		// Experimental fill introspect body into claims
 		if scope == "hsp:iam:introspect" {
-			originalClaims["introspect"] = cd.Introspect
+			originalClaims["intr"] = cd.Introspect
+		}
+		// Experimental fill token into claims
+		if scope == "hsp:iam:token" {
+			originalClaims["tkn"] = string(cd.AccessToken)
 		}
 
 		// Experimental tenant scoping
