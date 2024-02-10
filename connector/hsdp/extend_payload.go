@@ -75,6 +75,10 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 					orgSubs = append(orgSubs, fmt.Sprintf("sub:%s", strings.TrimPrefix(group, "sub-")))
 				}
 			}
+			// Add roles
+			originalClaims["roles"] = org.Roles
+			// Add permissions
+			originalClaims["permissions"] = org.Permissions
 		}
 	}
 	// Rewrite name
