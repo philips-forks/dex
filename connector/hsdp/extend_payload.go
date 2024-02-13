@@ -19,7 +19,21 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 		return payload, err
 	}
 
-	c.logger.Info("ExtendPayload called for user: ", cd.Introspect.Username)
+	c.logger.Info("ExtendPayload called", "sub", cd.Introspect.Sub, "user", cd.Introspect.Username)
+
+	// Check if we have a trusted org mapping
+	aud := originalClaims["aud"].(string)
+	if orgID, ok := c.audienceTrustMap[aud]; ok {
+		c.logger.Info("Found trusted org mapping for ", aud, " to ", orgID)
+		trustedOrgID = orgID
+	}
+
+	// Service identities only support their managing org as the trusted org
+	// and token should expire when the service identity token expires
+	if cd.Introspect.IdentityType == "Service" {
+		trustedOrgID = cd.Introspect.Organizations.ManagingOrganization
+		originalClaims["exp"] = cd.Introspect.Expires
+	}
 
 	for _, scope := range scopes {
 		// Experimental fill introspect body into claims
@@ -31,6 +45,7 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 			originalClaims["tkn"] = string(cd.AccessToken)
 		}
 	}
+	originalClaims["idt"] = cd.Introspect.IdentityType
 	originalClaims["mid"] = cd.Introspect.Organizations.ManagingOrganization
 	originalClaims["tid"] = trustedOrgID
 	// Rewrite subject

@@ -24,15 +24,16 @@ import (
 
 // Config holds configuration options for OpenID Connect logins.
 type Config struct {
-	Issuer         string `json:"issuer"`
-	InsecureIssuer string `json:"insecureIssuer"`
-	ClientID       string `json:"clientID"`
-	ClientSecret   string `json:"clientSecret"`
-	RedirectURI    string `json:"redirectURI"`
-	TrustedOrgID   string `json:"trustedOrgID"`
-	SAML2LoginURL  string `json:"saml2LoginURL"`
-	IAMURL         string `json:"iamURL"`
-	IDMURL         string `json:"idmURL"`
+	Issuer           string           `json:"issuer"`
+	InsecureIssuer   string           `json:"insecureIssuer"`
+	ClientID         string           `json:"clientID"`
+	ClientSecret     string           `json:"clientSecret"`
+	RedirectURI      string           `json:"redirectURI"`
+	TrustedOrgID     string           `json:"trustedOrgID"`
+	AudienceTrustMap AudienceTrustMap `json:"audienceTrustMap"`
+	SAML2LoginURL    string           `json:"saml2LoginURL"`
+	IAMURL           string           `json:"iamURL"`
+	IDMURL           string           `json:"idmURL"`
 
 	// Extensions implemented by HSP IAM
 	Extension
@@ -66,16 +67,27 @@ type Extension struct {
 	IntrospectionEndpoint string `json:"introspection_endpoint"`
 }
 
+type AudienceTrustMap map[string]string
+
 // ConnectorData stores information for sessions authenticated by this connector
 type ConnectorData struct {
-	RefreshToken  []byte
-	AccessToken   []byte
-	Assertion     []byte
-	Groups        []string
-	TrustedIDPOrg string
-	Introspect    iam.IntrospectResponse
-	User          iam.Profile
+	RefreshToken     []byte
+	AccessToken      []byte
+	Assertion        []byte
+	Groups           []string
+	TrustedIDPOrg    string
+	AudienceTrustMap AudienceTrustMap
+	Introspect       iam.IntrospectResponse
+	User             iam.Profile
 }
+
+type caller uint
+
+const (
+	createCaller caller = iota
+	refreshCaller
+	exchangeCaller
+)
 
 // Open returns a connector which can be used to log in users through an upstream
 // OpenID Connect provider.
@@ -107,7 +119,8 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 
 	scopes := []string{oidc.ScopeOpenID}
 	if len(c.Scopes) > 0 {
-		scopes = append(scopes, c.Scopes...)
+		filtered := removeElement(c.Scopes, "federated:id") // HSP IAM does not support scopes with colon
+		scopes = append(scopes, filtered...)
 	} else {
 		scopes = append(scopes, "profile", "email", "groups")
 	}
@@ -127,16 +140,21 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 		return nil, fmt.Errorf("error creating HSP IAM client: %w", err)
 	}
 
+	for a, t := range c.AudienceTrustMap {
+		logger.Info("audienceTrustMap: ", a, " -> ", t)
+	}
+
 	clientID := c.ClientID
 	return &HSDPConnector{
-		provider:      provider,
-		client:        client,
-		redirectURI:   c.RedirectURI,
-		introspectURI: c.IntrospectionEndpoint,
-		trustedOrgID:  c.TrustedOrgID,
-		samlLoginURL:  c.SAML2LoginURL,
-		clientID:      c.ClientID,
-		clientSecret:  c.ClientSecret,
+		provider:         provider,
+		client:           client,
+		redirectURI:      c.RedirectURI,
+		introspectURI:    c.IntrospectionEndpoint,
+		trustedOrgID:     c.TrustedOrgID,
+		audienceTrustMap: c.AudienceTrustMap,
+		samlLoginURL:     c.SAML2LoginURL,
+		clientID:         c.ClientID,
+		clientSecret:     c.ClientSecret,
 		oauth2Config: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: c.ClientSecret,
@@ -192,6 +210,7 @@ type HSDPConnector struct {
 	tenantGroups              []string
 	insecureSkipEmailVerified bool
 	promptType                string
+	audienceTrustMap          AudienceTrustMap
 }
 
 func (c *HSDPConnector) isSAML() bool {
@@ -295,7 +314,7 @@ func (c *HSDPConnector) HandleCallback(s connector.Scopes, r *http.Request) (ide
 			RefreshToken: tr.RefreshToken,
 			Expiry:       time.Unix(tr.ExpiresIn, 0),
 		}
-		return c.createIdentity(r.Context(), identity, token, r)
+		return c.createIdentity(r.Context(), identity, token, r, createCaller)
 	}
 
 	token, err := c.oauth2Config.Exchange(r.Context(), q.Get("code"))
@@ -303,7 +322,7 @@ func (c *HSDPConnector) HandleCallback(s connector.Scopes, r *http.Request) (ide
 		return identity, fmt.Errorf("oidc: failed to get token: %v", err)
 	}
 
-	return c.createIdentity(r.Context(), identity, token, r)
+	return c.createIdentity(r.Context(), identity, token, r, createCaller)
 }
 
 // Refresh is used to refresh a session with the refresh token provided by the IdP
@@ -323,15 +342,24 @@ func (c *HSDPConnector) Refresh(ctx context.Context, s connector.Scopes, identit
 		return identity, fmt.Errorf("oidc: failed to get refresh token: %v", err)
 	}
 
-	return c.createIdentity(ctx, identity, token, nil)
+	return c.createIdentity(ctx, identity, token, nil, refreshCaller)
 }
 
-func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.Identity, token *oauth2.Token, r *http.Request) (connector.Identity, error) {
+func (c *HSDPConnector) TokenIdentity(ctx context.Context, subjectTokenType, subjectToken string) (connector.Identity, error) {
+	var identity connector.Identity
+	token := &oauth2.Token{
+		AccessToken: subjectToken,
+		TokenType:   "Bearer",
+	}
+	return c.createIdentity(ctx, identity, token, nil, exchangeCaller)
+}
+
+func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.Identity, token *oauth2.Token, r *http.Request, caller caller) (connector.Identity, error) {
 	var claims map[string]interface{}
 
 	cd := ConnectorData{}
 
-	if c.isSAML() && r != nil {
+	if caller == createCaller && c.isSAML() && r != nil {
 		// Save assertion
 		q := r.URL.Query()
 		assertion := q.Get("assertion")
@@ -341,21 +369,15 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 	// We immediately want to run getUserInfo if configured before we validate the claims
 	userInfo, err := c.provider.UserInfo(ctx, oauth2.StaticTokenSource(token))
 	if err != nil {
-		return identity, fmt.Errorf("oidc: error loading userinfo: %v", err)
+		return identity, fmt.Errorf("hsdp: error loading userinfo: %v", err)
 	}
 	if err := userInfo.Claims(&claims); err != nil {
-		return identity, fmt.Errorf("oidc: failed to decode userinfo claims: %v", err)
+		return identity, fmt.Errorf("hsdp: failed to decode userinfo claims: %v", err)
 	}
 	// Introspect so we can get group assignments
 	introspectResponse, err := c.introspect(ctx, oauth2.StaticTokenSource(token))
 	if err != nil {
 		return identity, fmt.Errorf("hsdp: introspect failed: %w", err)
-	}
-
-	// Get user info for profile details
-	user, _, err := c.client.WithToken(token.AccessToken).Users.LegacyGetUserByUUID(introspectResponse.Sub)
-	if err != nil {
-		return identity, fmt.Errorf("hsdp: getUserByID failed: %w", err)
 	}
 
 	hasEmailScope := false
@@ -367,6 +389,11 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 	}
 
 	email, found := claims["email"].(string)
+	// For Service identities we take sub as email claim
+	if introspectResponse.IdentityType == "Service" {
+		email = introspectResponse.Sub
+		found = true
+	}
 	if !found && hasEmailScope {
 		return identity, errors.New("missing \"email\" claim")
 	}
@@ -387,14 +414,22 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 			}
 		}
 		if !found {
-			return identity, fmt.Errorf("oidc: unexpected hd claim %v", hostedDomain)
+			return identity, fmt.Errorf("hsdp: unexpected hd claim %v", hostedDomain)
 		}
 	}
 
 	cd.RefreshToken = []byte(token.RefreshToken)
 	cd.AccessToken = []byte(token.AccessToken)
 	cd.Introspect = *introspectResponse
-	cd.User = *user
+
+	// Get user info for profile details
+	user, _, err := c.client.WithToken(token.AccessToken).Users.LegacyGetUserByUUID(introspectResponse.Sub)
+	if err != nil {
+		// Should log here
+	}
+	if user != nil {
+		cd.User = *user
+	}
 
 	identity = connector.Identity{
 		UserID:        introspectResponse.Sub,
@@ -413,6 +448,7 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 		cd.Groups = identity.Groups
 	}
 	cd.TrustedIDPOrg = trustedOrgID
+	cd.AudienceTrustMap = c.audienceTrustMap
 
 	// Attach connector data
 	connData, err := json.Marshal(&cd)
@@ -422,4 +458,15 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 	identity.ConnectorData = connData
 
 	return identity, nil
+}
+
+// removeElement removes an element from a slice. It works for any ordered type (e.g., numbers, strings).
+func removeElement[T comparable](slice []T, elementToRemove T) []T {
+	var newSlice []T
+	for _, item := range slice {
+		if item != elementToRemove {
+			newSlice = append(newSlice, item)
+		}
+	}
+	return newSlice
 }
