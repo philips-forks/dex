@@ -78,6 +78,9 @@ func TestHandleCallback(t *testing.T) {
 				RedirectURI:          fmt.Sprintf("%s/callback", serverURL),
 				BasicAuthUnsupported: &basicAuth,
 				TenantGroups:         []string{"logreaders"},
+				AudienceTrustMap: map[string]string{
+					"clientID": "tenantID",
+				},
 			}
 
 			conn, err := newConnector(config)

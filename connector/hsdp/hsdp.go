@@ -24,15 +24,16 @@ import (
 
 // Config holds configuration options for OpenID Connect logins.
 type Config struct {
-	Issuer         string `json:"issuer"`
-	InsecureIssuer string `json:"insecureIssuer"`
-	ClientID       string `json:"clientID"`
-	ClientSecret   string `json:"clientSecret"`
-	RedirectURI    string `json:"redirectURI"`
-	TrustedOrgID   string `json:"trustedOrgID"`
-	SAML2LoginURL  string `json:"saml2LoginURL"`
-	IAMURL         string `json:"iamURL"`
-	IDMURL         string `json:"idmURL"`
+	Issuer           string           `json:"issuer"`
+	InsecureIssuer   string           `json:"insecureIssuer"`
+	ClientID         string           `json:"clientID"`
+	ClientSecret     string           `json:"clientSecret"`
+	RedirectURI      string           `json:"redirectURI"`
+	TrustedOrgID     string           `json:"trustedOrgID"`
+	AudienceTrustMap AudienceTrustMap `json:"audienceTrustMap"`
+	SAML2LoginURL    string           `json:"saml2LoginURL"`
+	IAMURL           string           `json:"iamURL"`
+	IDMURL           string           `json:"idmURL"`
 
 	// Extensions implemented by HSP IAM
 	Extension
@@ -66,15 +67,18 @@ type Extension struct {
 	IntrospectionEndpoint string `json:"introspection_endpoint"`
 }
 
+type AudienceTrustMap map[string]string
+
 // ConnectorData stores information for sessions authenticated by this connector
 type ConnectorData struct {
-	RefreshToken  []byte
-	AccessToken   []byte
-	Assertion     []byte
-	Groups        []string
-	TrustedIDPOrg string
-	Introspect    iam.IntrospectResponse
-	User          iam.Profile
+	RefreshToken     []byte
+	AccessToken      []byte
+	Assertion        []byte
+	Groups           []string
+	TrustedIDPOrg    string
+	AudienceTrustMap AudienceTrustMap
+	Introspect       iam.IntrospectResponse
+	User             iam.Profile
 }
 
 // Open returns a connector which can be used to log in users through an upstream
@@ -129,14 +133,15 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 
 	clientID := c.ClientID
 	return &HSDPConnector{
-		provider:      provider,
-		client:        client,
-		redirectURI:   c.RedirectURI,
-		introspectURI: c.IntrospectionEndpoint,
-		trustedOrgID:  c.TrustedOrgID,
-		samlLoginURL:  c.SAML2LoginURL,
-		clientID:      c.ClientID,
-		clientSecret:  c.ClientSecret,
+		provider:         provider,
+		client:           client,
+		redirectURI:      c.RedirectURI,
+		introspectURI:    c.IntrospectionEndpoint,
+		trustedOrgID:     c.TrustedOrgID,
+		audienceTrustMap: c.AudienceTrustMap,
+		samlLoginURL:     c.SAML2LoginURL,
+		clientID:         c.ClientID,
+		clientSecret:     c.ClientSecret,
 		oauth2Config: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: c.ClientSecret,
@@ -192,6 +197,7 @@ type HSDPConnector struct {
 	tenantGroups              []string
 	insecureSkipEmailVerified bool
 	promptType                string
+	audienceTrustMap          AudienceTrustMap
 }
 
 func (c *HSDPConnector) isSAML() bool {
@@ -413,6 +419,7 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 		cd.Groups = identity.Groups
 	}
 	cd.TrustedIDPOrg = trustedOrgID
+	cd.AudienceTrustMap = c.audienceTrustMap
 
 	// Attach connector data
 	connData, err := json.Marshal(&cd)
