@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"golang.org/x/exp/slices"
 )
 
 func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []byte) ([]byte, error) {
@@ -31,25 +29,6 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 		// Experimental fill token into claims
 		if scope == "hsp:iam:token" {
 			originalClaims["tkn"] = string(cd.AccessToken)
-		}
-
-		// Experimental tenant scoping
-		if strings.HasPrefix(scope, "tenant:") {
-			group := strings.TrimPrefix(scope, "tenant:")
-			if slices.Contains(c.tenantGroups, group) {
-				var tenants []string
-				// Iterate through introspect and add OrgID as tenant when matched
-				for _, org := range cd.Introspect.Organizations.OrganizationList {
-					for _, orgGroup := range org.Groups {
-						if group == orgGroup {
-							tenants = append(tenants, org.OrganizationID)
-						}
-					}
-				}
-				if len(tenants) > 0 {
-					originalClaims[scope] = tenants
-				}
-			}
 		}
 	}
 	originalClaims["mid"] = cd.Introspect.Organizations.ManagingOrganization
