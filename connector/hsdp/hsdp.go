@@ -131,6 +131,10 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 		return nil, fmt.Errorf("error creating HSP IAM client: %w", err)
 	}
 
+	for a, t := range c.AudienceTrustMap {
+		logger.Info("audienceTrustMap: ", a, " -> ", t)
+	}
+
 	clientID := c.ClientID
 	return &HSDPConnector{
 		provider:         provider,
