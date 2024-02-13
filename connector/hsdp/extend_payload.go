@@ -24,16 +24,6 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 	c.logger.Info("ExtendPayload called for user: ", cd.Introspect.Username)
 
 	for _, scope := range scopes {
-		// Check if we should use the trusted_tenant scope
-		if strings.HasPrefix(scope, "trusted_tenant:") {
-			var tenant string
-			if count, err := fmt.Sscanf(scope, "trusted_tenant:%s", &tenant); err == nil && count == 1 {
-				trustedOrgID = tenant
-			} else {
-				c.logger.Errorf("error parsing scope: %s", scope)
-			}
-		}
-
 		// Experimental fill introspect body into claims
 		if scope == "hsp:iam:introspect" {
 			originalClaims["intr"] = cd.Introspect
