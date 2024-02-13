@@ -21,6 +21,12 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 
 	c.logger.Info("ExtendPayload called for user: ", cd.Introspect.Username)
 
+	// Check if we have a trusted org mapping
+	aud := originalClaims["aud"].(string)
+	if orgID, ok := c.audienceTrustMap[aud]; ok {
+		trustedOrgID = orgID
+	}
+
 	for _, scope := range scopes {
 		// Experimental fill introspect body into claims
 		if scope == "hsp:iam:introspect" {
