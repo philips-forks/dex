@@ -24,6 +24,7 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 	// Check if we have a trusted org mapping
 	aud := originalClaims["aud"].(string)
 	if orgID, ok := c.audienceTrustMap[aud]; ok {
+		c.logger.Info("Found trusted org mapping for ", aud, " to ", orgID)
 		trustedOrgID = orgID
 	}
 
