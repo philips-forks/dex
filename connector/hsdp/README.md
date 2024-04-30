@@ -2,6 +2,80 @@
 
 This connector allows you to use the HSP IAM service as an identity provider for your Cloud Foundry applications.
 
+## Configuration
+
+There are a few steps required to configure the HSP IAM Dex connector, specifically for CODE1 integration. In the below
+example we'll assume you are going to install Dex on the following URL:
+
+`https://dex.example.com`
+
+### 1. Create HSP IAM OAuth2 OAuth2
+
+Create an OAuth2 Client in your HSP IAM Organization. Set the `RedirectURI` to the Dex callback URL:
+
+`htps://dex.example/com/callback`
+
+Add the following scopes, also include these as default scopes:
+  - auth_iam_introspect
+  - auth_iam_organization
+  - openid
+  - profile
+  - email
+  - name
+
+The `ClientId` and `ClientSecret` are required in the config step below
+
+### 2. Create one or more static clients in Dex
+
+Create one ore more static clients in Dex. These clients are used in your app
+to integrated with Dex itself. Example:
+
+```yaml
+config:
+  staticClients:
+    - id: example-app
+      secret: SecretHere
+      name: 'Example App'
+      # Where the app will be running.
+      redirectURIs:
+        - 'https://your-app.example.com/callback'
+```
+
+### 3. Create a hsdp connector in Dex
+
+```yaml
+config:
+  connectors:
+    - type: hsdp
+      id: hsdp
+      name: HSP IAM Code1
+      config:
+        trustedOrgID: 8a67a785-73bb-46d5-b73f-d951a6d3cb43
+        audienceTrustMap:
+          example-app: 8a67a785-73bb-46d5-b73f-d951a6d3cb43
+        issuer: 'https://iam-client-test.us-east.philips-healthsuite.com/authorize/oauth2/v2'
+        insecureIssuer: 'https://iam-client-test.us-east.philips-healthsuite.com/oauth2/access_token'
+        saml2LoginURL: 'https://iam-integration.us-east.philips-healthsuite.com/authorize/saml2/login?idp_id=https://sts.windows.net/1a407a2d-7675-4d17-8692-b3ac285306e4/&client_id=sp-philips-hspiam-useast-ct&api-version=1'
+        clientID: ClientId          # The OAuth2 Client ID from step 1
+        clientSecret: ClientSecret  # The OAuth2 Client Secret from step 1
+        iamURL: 'https://iam-client-test.us-east.philips-healthsuite.com'
+        idmURL: 'https://idm-client-test.us-east.philips-healthsuite.com'
+        redirectURI: https://dex.example.com/callback
+        getUserInfo: true
+        userNameKey: sub
+        scopes:
+          - auth_iam_introspect
+          - auth_iam_organization
+          - openid
+          - profile
+          - email
+          - name
+```
+
+You are now set. Dex will integrate with HSP IAM Code1 and your apps can now
+integrate with Dex through OIDC. All roles assigned in the trusted HSP IAM Org will
+be exposed as `claims` to your app.
+
 ## Custom scopes
 
 The connector supports custom scopes. To use them, you need to create a custom scope in the HSP IAM service and then add it to the `scopes` array in the `manifest.yml` file.
