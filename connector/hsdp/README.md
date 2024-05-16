@@ -72,6 +72,25 @@ config:
           - name
 ```
 
+#### argument description
+
+| Argument           | Type                                | Description                                                                                                                |
+|--------------------|-------------------------------------|----------------------------------------------------------------------------------------------------------------------------|
+| `trustedOrgID`     | string                              | The default HSP IAM Organization ID to trust. This is the Organization ID of the HSP IAM Org.                              |
+| `audienceTrustMap` | map(string)                         | A mapping of static clients to trusted Organization ID. Use this to override the default `trustedOrgId` for a given client |
+| `issuer`           | string                              | The HSP IAM OAuth2 issuer URL.                                                                                             |
+| `insecureIssuer`   | string                              | The HSP IAM OAuth2 issuer URL for introspection.                                                                           |
+| `saml2LoginURL`    | string                              | The HSP IAM SAML2 login URL.                                                                                               |
+| `clientID`         | string                              | The OAuth2 Client ID from step 1.                                                                                          |
+| `clientSecret`     | string                              | The OAuth2 Client Secret from step 1.                                                                                      |
+| `iamURL`           | string                              | The HSP IAM URL.                                                                                                           |
+| `idmURL`           | string                              | The HSP IDM URL.                                                                                                           |
+| `redirectURI`      | string                              | The Dex redirect URI.                                                                                                      |
+| `getUserInfo`      | bool                                | Whether to get user info.                                                                                                  |
+| `userNameKey`      | bool                                | The key to use for the user name.                                                                                          |
+| `scopes`           | list(string) The scopes to request. |
+
+
 You are now set. Dex will integrate with HSP IAM Code1 and your apps can now
 integrate with Dex through OIDC. All roles assigned in the trusted HSP IAM Org will
 be exposed as `claims` to your app.
@@ -85,4 +104,4 @@ The connector supports custom scopes. To use them, you need to create a custom s
 | `hsp:iam:introspect` | Returns introspect response as a claim.    |
 | `hsp:iam:token`      | Returns a HSP IAM access token as a claim. |
 
-> All of the above mentioned scopes are optional but must be specified in the `allowed_scopes` settings for them to become available.
+> All the above-mentioned scopes are optional but must be specified in the `allowed_scopes` settings for them to become available.
