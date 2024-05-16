@@ -13,7 +13,7 @@ example we'll assume you are going to install Dex on the following URL:
 
 Create an OAuth2 Client in your HSP IAM Organization. Set the `RedirectURI` to the Dex callback URL:
 
-`htps://dex.example/com/callback`
+`https://dex.example.com/callback`
 
 Add the following scopes, also include these as default scopes:
   - auth_iam_introspect
@@ -25,7 +25,21 @@ Add the following scopes, also include these as default scopes:
 
 The `ClientId` and `ClientSecret` are required in the config step below
 
-### 2. Create one or more static clients in Dex
+### 2. Open a SNOW ticket to allow-list the Dex callback URL and to request the SAML2 login URL
+
+Open a General service request in SNOW to allow-list the Dex callback URL. This is required to allow the Dex callback URL to be used in the HSP IAM service.
+The RedirectURI pattern to allow-list should be this:
+
+```https://dex.example.com/*?*```
+
+Note the `*?*` at the end. This is required to allow the HSP IAM service to pass the OAuth2 code back to Dex.
+
+In the same SNOW ticket also request the IAM team to share the `CODE1 SAML2 Login URL`. This URL is the value to use for saml2LoginURL in the config below.
+It should look like something like this:
+
+```https://iam-integration.iam-region.philips-healthsuite.com/authorize/saml2/login?idp_id=https://sts.windows.net/1a407a2d-7675-4d17-8692-b3ac285306e4/&client_id=sp-philips-hspiam-region&api-version=1```
+
+### 3. Create one or more static clients in Dex
 
 Create one ore more static clients in Dex. These clients are used in your app
 to integrated with Dex itself. Example:
@@ -41,7 +55,7 @@ config:
         - 'https://your-app.example.com/callback'
 ```
 
-### 3. Create a hsdp connector in Dex
+### 4. Create a hsdp connector in Dex
 
 ```yaml
 config:
