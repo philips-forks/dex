@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,7 +20,6 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/dexidp/dex/connector"
-	"github.com/dexidp/dex/pkg/log"
 )
 
 // Config holds configuration options for OpenID Connect logins.
@@ -91,7 +91,7 @@ const (
 
 // Open returns a connector which can be used to log in users through an upstream
 // OpenID Connect provider.
-func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, err error) {
+func (c *Config) Open(id string, logger *slog.Logger) (conn connector.Connector, err error) {
 	parentContext, cancel := context.WithCancel(context.Background())
 
 	ctx := oidc.InsecureIssuerURLContext(parentContext, c.InsecureIssuer)
@@ -141,7 +141,7 @@ func (c *Config) Open(id string, logger log.Logger) (conn connector.Connector, e
 	}
 
 	for a, t := range c.AudienceTrustMap {
-		logger.Info("audienceTrustMap: ", a, " -> ", t)
+		logger.Info("audienceTrustMap", "source", a, "destination", t)
 	}
 
 	clientID := c.ClientID
@@ -205,7 +205,7 @@ type HSDPConnector struct {
 	oauth2Config              *oauth2.Config
 	verifier                  *oidc.IDTokenVerifier
 	cancel                    context.CancelFunc
-	logger                    log.Logger
+	logger                    *slog.Logger
 	hostedDomains             []string
 	tenantGroups              []string
 	insecureSkipEmailVerified bool

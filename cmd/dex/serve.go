@@ -282,7 +282,7 @@ func runServe(options serveOptions) error {
 		logger.Info("config allowed origins", "origins", c.Web.AllowedOrigins)
 	}
 	if len(c.OAuth2.AllowedScopePrefixes) > 0 {
-		logger.Infof("config allowed scope prefixes: %s", strings.Join(c.OAuth2.AllowedScopePrefixes, ","))
+		logger.Info("config allowed scope prefixes", "scopes", strings.Join(c.OAuth2.AllowedScopePrefixes, ","))
 	}
 
 	// explicitly convert to UTC.
