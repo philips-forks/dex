@@ -29,8 +29,10 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 	}
 
 	// Service identities only support their managing org as the trusted org
+	// and token should expire when the service identity token expires
 	if cd.Introspect.IdentityType == "Service" {
 		trustedOrgID = cd.Introspect.Organizations.ManagingOrganization
+		originalClaims["exp"] = cd.Introspect.Expires
 	}
 
 	for _, scope := range scopes {
