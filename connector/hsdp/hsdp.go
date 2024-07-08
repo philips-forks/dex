@@ -111,7 +111,8 @@ func (c *Config) Open(id string, logger *slog.Logger) (conn connector.Connector,
 
 	scopes := []string{oidc.ScopeOpenID}
 	if len(c.Scopes) > 0 {
-		scopes = append(scopes, c.Scopes...)
+		filtered := removeElement(c.Scopes, "federated:id") // HSP IAM does not support scopes with colon
+		scopes = append(scopes, filtered...)
 	} else {
 		scopes = append(scopes, "profile", "email", "groups")
 	}
@@ -433,4 +434,15 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 	identity.ConnectorData = connData
 
 	return identity, nil
+}
+
+// removeElement removes an element from a slice. It works for any ordered type (e.g., numbers, strings).
+func removeElement[T comparable](slice []T, elementToRemove T) []T {
+	var newSlice []T
+	for _, item := range slice {
+		if item != elementToRemove {
+			newSlice = append(newSlice, item)
+		}
+	}
+	return newSlice
 }
