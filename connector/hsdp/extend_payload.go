@@ -19,13 +19,18 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 		return payload, err
 	}
 
-	c.logger.Info("ExtendPayload called", "user", cd.Introspect.Username)
+	c.logger.Info("ExtendPayload called", "sub", cd.Introspect.Sub, "user", cd.Introspect.Username)
 
 	// Check if we have a trusted org mapping
 	aud := originalClaims["aud"].(string)
 	if orgID, ok := c.audienceTrustMap[aud]; ok {
 		c.logger.Info("Found trusted org mapping", "audience", aud, "org", orgID)
 		trustedOrgID = orgID
+	}
+
+	// Service identities only support their managing org as the trusted org
+	if cd.Introspect.IdentityType == "Service" {
+		trustedOrgID = cd.Introspect.Organizations.ManagingOrganization
 	}
 
 	for _, scope := range scopes {
@@ -38,6 +43,7 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 			originalClaims["tkn"] = string(cd.AccessToken)
 		}
 	}
+	originalClaims["idt"] = cd.Introspect.IdentityType
 	originalClaims["mid"] = cd.Introspect.Organizations.ManagingOrganization
 	originalClaims["tid"] = trustedOrgID
 	// Rewrite subject
