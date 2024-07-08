@@ -380,12 +380,6 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 		return identity, fmt.Errorf("hsdp: introspect failed: %w", err)
 	}
 
-	// Get user info for profile details
-	user, _, err := c.client.WithToken(token.AccessToken).Users.LegacyGetUserByUUID(introspectResponse.Sub)
-	if err != nil {
-		return identity, fmt.Errorf("hsdp: getUserByID failed: %w", err)
-	}
-
 	hasEmailScope := false
 	for _, s := range c.oauth2Config.Scopes {
 		if s == "email" {
@@ -422,7 +416,15 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 	cd.RefreshToken = []byte(token.RefreshToken)
 	cd.AccessToken = []byte(token.AccessToken)
 	cd.Introspect = *introspectResponse
-	cd.User = *user
+
+	// Get user info for profile details
+	user, _, err := c.client.WithToken(token.AccessToken).Users.LegacyGetUserByUUID(introspectResponse.Sub)
+	if err != nil {
+		// Should log here
+	}
+	if user != nil {
+		cd.User = *user
+	}
 
 	identity = connector.Identity{
 		UserID:        introspectResponse.Sub,
