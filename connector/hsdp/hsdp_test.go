@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -19,7 +20,6 @@ import (
 	"github.com/dexidp/dex/connector/hsdp"
 
 	"github.com/philips-software/go-hsdp-api/iam"
-	"github.com/sirupsen/logrus"
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/dexidp/dex/connector"
@@ -256,7 +256,7 @@ func newToken(key *jose.JSONWebKey, claims map[string]interface{}) (string, erro
 }
 
 func newConnector(config hsdp.Config) (*hsdp.HSDPConnector, error) {
-	logger := logrus.New()
+	logger := slog.Default()
 	conn, err := config.Open("id", logger)
 	if err != nil {
 		return nil, fmt.Errorf("unable to open: %v", err)

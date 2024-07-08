@@ -93,7 +93,7 @@ func tokenErr(w http.ResponseWriter, typ, description string, statusCode int) er
 	return nil
 }
 
-//nolint
+// nolint
 const (
 	errInvalidRequest          = "invalid_request"
 	errUnauthorizedClient      = "unauthorized_client"
@@ -360,7 +360,7 @@ func (s *Server) newIDToken(clientID string, claims storage.Claims, scopes []str
 
 	conn, err := s.getConnector(connID)
 	if err != nil {
-		s.logger.Errorf("Failed to get connector with id %q : %v", connID, err)
+		s.logger.Error("Failed to get connector", "id", connID, "error", err)
 		return "", expiry, err
 	}
 
@@ -456,7 +456,7 @@ func (s *Server) newIDToken(clientID string, claims storage.Claims, scopes []str
 	case connector.PayloadExtender:
 		extendedPayload, err := c.ExtendPayload(scopes, payload, connectorData)
 		if err != nil {
-			s.logger.Warnf("failed to enhance payload: %w", err)
+			s.logger.Warn("failed to enhance payload", "error", err)
 			break
 		}
 		payload = extendedPayload
