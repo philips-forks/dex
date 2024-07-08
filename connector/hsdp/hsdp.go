@@ -389,6 +389,11 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 	}
 
 	email, found := claims["email"].(string)
+	// For Service identities we take sub as email claim
+	if introspectResponse.IdentityType == "Service" {
+		email = introspectResponse.Sub
+		found = true
+	}
 	if !found && hasEmailScope {
 		return identity, errors.New("missing \"email\" claim")
 	}
