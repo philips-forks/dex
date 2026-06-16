@@ -138,6 +138,10 @@ web:
 #     enforce: false
 #     # Supported code challenge methods. Defaults to ["S256", "plain"].
 #     codeChallengeMethodsSupported: ["S256", "plain"]
+#
+#   # Enable Dynamic Client Registration (DCR) (RFC 7591)
+#   # enableDCR: false
+#   # dcrSecret: "a-secure-random-32-byte-secret-key"
 
 # Static clients registered in Dex by default.
 #

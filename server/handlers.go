@@ -73,22 +73,23 @@ func (s *Server) handlePublicKeys(w http.ResponseWriter, r *http.Request) {
 }
 
 type discovery struct {
-	Issuer            string   `json:"issuer"`
-	Auth              string   `json:"authorization_endpoint"`
-	Token             string   `json:"token_endpoint"`
-	Keys              string   `json:"jwks_uri"`
-	UserInfo          string   `json:"userinfo_endpoint"`
-	DeviceEndpoint    string   `json:"device_authorization_endpoint"`
-	Introspect        string   `json:"introspection_endpoint"`
-	EndSession        string   `json:"end_session_endpoint,omitempty"`
-	GrantTypes        []string `json:"grant_types_supported"`
-	ResponseTypes     []string `json:"response_types_supported"`
-	Subjects          []string `json:"subject_types_supported"`
-	IDTokenAlgs       []string `json:"id_token_signing_alg_values_supported"`
-	CodeChallengeAlgs []string `json:"code_challenge_methods_supported"`
-	Scopes            []string `json:"scopes_supported"`
-	AuthMethods       []string `json:"token_endpoint_auth_methods_supported"`
-	Claims            []string `json:"claims_supported"`
+	Issuer               string   `json:"issuer"`
+	Auth                 string   `json:"authorization_endpoint"`
+	Token                string   `json:"token_endpoint"`
+	Keys                 string   `json:"jwks_uri"`
+	UserInfo             string   `json:"userinfo_endpoint"`
+	DeviceEndpoint       string   `json:"device_authorization_endpoint"`
+	Introspect           string   `json:"introspection_endpoint"`
+	EndSession           string   `json:"end_session_endpoint,omitempty"`
+	RegistrationEndpoint string   `json:"registration_endpoint,omitempty"`
+	GrantTypes           []string `json:"grant_types_supported"`
+	ResponseTypes        []string `json:"response_types_supported"`
+	Subjects             []string `json:"subject_types_supported"`
+	IDTokenAlgs          []string `json:"id_token_signing_alg_values_supported"`
+	CodeChallengeAlgs    []string `json:"code_challenge_methods_supported"`
+	Scopes               []string `json:"scopes_supported"`
+	AuthMethods          []string `json:"token_endpoint_auth_methods_supported"`
+	Claims               []string `json:"claims_supported"`
 }
 
 func (s *Server) discoveryHandler(ctx context.Context) (http.HandlerFunc, error) {
@@ -143,6 +144,10 @@ func (s *Server) constructDiscovery(ctx context.Context) discovery {
 
 	if s.sessionConfig != nil {
 		d.EndSession = s.absURL("/logout")
+	}
+
+	if s.enableDCR {
+		d.RegistrationEndpoint = s.absURL("/register")
 	}
 
 	return d
