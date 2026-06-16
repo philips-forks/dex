@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"sync/atomic"
@@ -46,6 +48,18 @@ type Server struct {
 	mux http.Handler
 
 	templates *templates.Templates
+
+	// If enabled, the server allows dynamic client registration (RFC 7591).
+	enableDCR bool
+
+	// Secret key used to sign/verify dynamic client registration access tokens.
+	dcrSecret []byte
+
+	now func() time.Time
+
+	supportedResponseTypes map[string]bool
+
+	supportedGrantTypes []string
 
 	logger *slog.Logger
 
@@ -91,10 +105,25 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 	}
 
 	s := &Server{
-		issuerURL: rc.issuerURL,
-		storage:   newKeyCacher(c.Storage, rc.now),
-		templates: rc.templates,
-		logger:    c.Logger,
+		issuerURL:              rc.issuerURL,
+		storage:                newKeyCacher(c.Storage, rc.now),
+		templates:              rc.templates,
+		logger:                 c.Logger,
+		now:                    rc.now,
+		supportedResponseTypes: rc.responseTypes,
+		supportedGrantTypes:    rc.grantTypes,
+		enableDCR:              c.EnableDCR,
+	}
+
+	if s.enableDCR {
+		s.dcrSecret = c.DCRSecret
+		if len(s.dcrSecret) == 0 {
+			s.dcrSecret = make([]byte, 32)
+			if _, err := io.ReadFull(rand.Reader, s.dcrSecret); err != nil {
+				return nil, fmt.Errorf("server: failed to generate random DCR secret: %v", err)
+			}
+			s.logger.Info("dcrSecret not configured, generated random key. Dynamic client registration access tokens will be invalidated on server restart")
+		}
 	}
 	s.sessions = &session.Manager{
 		Storage:   s.storage,
@@ -123,6 +152,7 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 		GrantTypes:      rc.grantTypes,
 		PKCEMethods:     c.PKCE.CodeChallengeMethodsSupported,
 		SessionsEnabled: c.SessionConfig != nil,
+		EnableDCR:       c.EnableDCR,
 	}
 
 	if err := s.openConnectors(ctx, c); err != nil {
@@ -327,6 +357,11 @@ func (s *Server) mount(routes router.Mux, c Config, rc resolvedConfig) {
 		},
 	} {
 		h.Mount(routes)
+	}
+
+	if s.enableDCR {
+		routes.HandleCORS("/register", s.handleRegister)
+		routes.HandleCORS("/register/{client_id}", s.handleRegisterClient)
 	}
 
 	routes.Handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
