@@ -31,6 +31,7 @@ type Handler struct {
 	GrantTypes      []string
 	PKCEMethods     []string
 	SessionsEnabled bool
+	EnableDCR       bool
 
 	docOnce sync.Once
 	docData []byte
@@ -50,14 +51,15 @@ func (h *Handler) Mount(m router.Mux) {
 
 // Document is the OIDC discovery document.
 type Document struct {
-	Issuer         string `json:"issuer"`
-	Auth           string `json:"authorization_endpoint"`
-	Token          string `json:"token_endpoint"`
-	Keys           string `json:"jwks_uri"`
-	UserInfo       string `json:"userinfo_endpoint"`
-	DeviceEndpoint string `json:"device_authorization_endpoint"`
-	Introspect     string `json:"introspection_endpoint"`
-	EndSession     string `json:"end_session_endpoint,omitempty"`
+	Issuer               string `json:"issuer"`
+	Auth                 string `json:"authorization_endpoint"`
+	Token                string `json:"token_endpoint"`
+	Keys                 string `json:"jwks_uri"`
+	UserInfo             string `json:"userinfo_endpoint"`
+	DeviceEndpoint       string `json:"device_authorization_endpoint"`
+	Introspect           string `json:"introspection_endpoint"`
+	EndSession           string `json:"end_session_endpoint,omitempty"`
+	RegistrationEndpoint string `json:"registration_endpoint,omitempty"`
 	// BackchannelLogout and BackchannelLogoutSession advertise OIDC Back-Channel
 	// Logout 1.0. Both are omitted rather than sent as false when sessions are off,
 	// matching how end_session_endpoint disappears with them.
@@ -174,6 +176,10 @@ func (h *Handler) Construct(ctx context.Context) Document {
 		// backchannel_logout_session_required to get one.
 		d.BackchannelLogoutSession = true
 		d.Claims = append(d.Claims, "sid")
+	}
+
+	if h.EnableDCR {
+		d.RegistrationEndpoint = h.IssuerURL.AbsURL("/register")
 	}
 
 	return d

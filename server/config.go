@@ -78,6 +78,13 @@ type Config struct {
 
 	GCFrequency time.Duration // Defaults to 5 minutes
 
+	// If enabled, the server will allow dynamic client registration (RFC 7591).
+	EnableDCR bool
+
+	// Secret key used to sign/verify dynamic client registration access tokens.
+	// If unset while EnableDCR is true, a random key is generated at startup.
+	DCRSecret []byte
+
 	// If specified, the server will use this function for determining time.
 	Now func() time.Time
 
