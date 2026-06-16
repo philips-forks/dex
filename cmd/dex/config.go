@@ -245,6 +245,17 @@ type OAuth2 struct {
 	PasswordConnector string `json:"passwordConnector"`
 	// PKCE configuration
 	PKCE PKCE `json:"pkce"`
+	// DCR configuration
+	DCR DCR `json:"dcr"`
+}
+
+// DCR holds the configuration for OAuth2 Dynamic Client Registration.
+type DCR struct {
+	// EnableDynamicClientRegistration enables dynamic client registration.
+	// Defaults to false.
+	Enable bool `json:"enable"`
+	// DCRSecret is a static secret key used to sign/verify dynamic client registration access tokens.
+	Secret string `json:"secret"`
 }
 
 // PKCE holds the PKCE (Proof Key for Code Exchange) configuration.
