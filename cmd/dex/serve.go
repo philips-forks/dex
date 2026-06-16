@@ -390,6 +390,8 @@ func runServe(options serveOptions) error {
 		IDTokensValidFor:           idTokensValidFor,
 		MFAProviders:               buildMFAProviders(c.MFA.Authenticators, c.Issuer, logger),
 		DefaultMFAChain:            c.MFA.DefaultMFAChain,
+		EnableDCR:                  c.OAuth2.DCR.Enable,
+		DCRSecret:                  []byte(c.OAuth2.DCR.Secret),
 	}
 
 	if c.Expiry.AuthRequests != "" {

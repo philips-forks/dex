@@ -2,9 +2,11 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -121,6 +123,12 @@ type Config struct {
 	PKCE PKCEConfig
 
 	GCFrequency time.Duration // Defaults to 5 minutes
+
+	// If enabled, the server will allow dynamic client registration.
+	EnableDCR bool
+
+	// Secret key used to sign/verify dynamic client registration access tokens.
+	DCRSecret []byte
 
 	// If specified, the server will use this function for determining time.
 	Now func() time.Time
@@ -241,6 +249,10 @@ type Server struct {
 	pkce PKCEConfig
 
 	allowedScopePrefixes []string
+
+	enableDCR bool
+
+	dcrSecret []byte
 
 	now func() time.Time
 
@@ -385,6 +397,18 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 		sessionConfig:          c.SessionConfig,
 		mfaProviders:           c.MFAProviders,
 		defaultMFAChain:        c.DefaultMFAChain,
+		enableDCR:              c.EnableDCR,
+	}
+
+	if s.enableDCR {
+		s.dcrSecret = c.DCRSecret
+		if len(s.dcrSecret) == 0 {
+			s.dcrSecret = make([]byte, 32)
+			if _, err := io.ReadFull(rand.Reader, s.dcrSecret); err != nil {
+				return nil, fmt.Errorf("server: failed to generate random DCR secret: %v", err)
+			}
+			s.logger.Info("dcrSecret not configured, generated random key. Dynamic client registration access tokens will be invalidated on server restart")
+		}
 	}
 
 	// Retrieves connector objects in backend storage. This list includes the static connectors
@@ -531,6 +555,11 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 	}
 	handleWithCORS("/.well-known/openid-configuration", discoveryHandler)
 	handleWithCORS("/", s.handleHome)
+
+	if s.enableDCR {
+		handleWithCORS("/register", s.handleRegister)
+		handleWithCORS("/register/{client_id}", s.handleRegisterClient)
+	}
 
 	// TODO(ericchiang): rate limit certain paths based on IP.
 	handleWithCORS("/token", s.handleToken)
