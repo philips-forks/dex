@@ -110,6 +110,7 @@ type Config struct {
 	AlwaysShowLoginScreen bool
 
 	IDTokensValidFor       time.Duration // Defaults to 24 hours
+	IDJAGTokensValidFor    time.Duration // Defaults to 5 minutes
 	AuthRequestsValidFor   time.Duration // Defaults to 24 hours
 	DeviceRequestsValidFor time.Duration // Defaults to 5 minutes
 
@@ -148,6 +149,16 @@ type Config struct {
 	// This allows the server to operate with a subset of connectors if some are misconfigured.
 	ContinueOnConnectorFailure bool
 
+	// TokenExchange configures Token Exchange support.
+	TokenExchange TokenExchangeConfig
+
+	IDJAGPolicies []TokenExchangePolicy
+
+	// EnterpriseManagedAuthorization configures Dex as an MCP Authorization
+	// Server (EMA Role B): accepting ID-JAGs minted by a trusted enterprise IdP
+	// and redeeming them for resource-bound access tokens via the jwt-bearer grant.
+	EnterpriseManagedAuthorization EMAConfig
+
 	// SessionConfig holds session settings. Nil when sessions are disabled.
 	SessionConfig *SessionConfig
 
@@ -158,6 +169,51 @@ type Config struct {
 	DefaultMFAChain []string
 
 	AllowedScopePrefixes []string
+}
+
+// TokenExchangeConfig holds configuration for Token Exchange support.
+type TokenExchangeConfig struct {
+	TokenTypes []string `json:"tokenTypes"`
+}
+
+// IDJAGEnabled reports whether the ID-JAG token type is enabled.
+func (c TokenExchangeConfig) IDJAGEnabled() bool {
+	for _, t := range c.TokenTypes {
+		if t == tokenTypeIDJAG {
+			return true
+		}
+	}
+	return false
+}
+
+// EMAConfig configures Dex's MCP Authorization Server role for
+// Enterprise-Managed Authorization (EMA Role B).
+type EMAConfig struct {
+	// Enabled turns on the jwt-bearer grant and EMA discovery metadata.
+	Enabled bool `json:"enabled"`
+
+	// TrustedIssuers lists the enterprise IdPs whose ID-JAGs Dex will accept.
+	TrustedIssuers []TrustedIssuer `json:"trustedIssuers"`
+
+	// AccountLinkingByEmail, when true, allows downstream consumers to link the
+	// ID-JAG identity to a local account by its (verified) email claim. When
+	// false (default), only the opaque subject is used.
+	AccountLinkingByEmail bool `json:"accountLinkingByEmail"`
+}
+
+// TrustedIssuer describes an enterprise IdP whose ID-JAGs Dex accepts when
+// acting as an MCP Authorization Server.
+type TrustedIssuer struct {
+	// Issuer is the IdP's issuer identifier; it must match the ID-JAG "iss" claim.
+	Issuer string `json:"issuer"`
+	// JWKSURL is where the IdP publishes its signing keys.
+	JWKSURL string `json:"jwksURL"`
+	// ExpectedAudience is this Dex's own issuer identifier; the ID-JAG "aud"
+	// claim must equal this value (EMA §4: audience is the MCP AS issuer).
+	ExpectedAudience string `json:"expectedAudience"`
+	// AllowedClientIDs optionally restricts which ID-JAG "client_id" values are
+	// accepted from this issuer. Empty means any client_id is accepted.
+	AllowedClientIDs []string `json:"allowedClientIDs"`
 }
 
 // SessionConfig holds resolved session configuration.
@@ -266,6 +322,20 @@ type Server struct {
 
 	signer signer.Signer
 
+	enableIDJAG           bool
+	idJAGTokensValidFor   time.Duration
+	tokenExchangePolicies []TokenExchangePolicy
+
+	// EMA Role B (MCP Authorization Server) state.
+	enableEMA         bool
+	emaAccountLinking bool
+	idJAGVerifiers    map[string]*idJAGVerifier // keyed by trusted issuer
+
+	// ID-JAG Prometheus metrics (nil when PrometheusRegistry is not set).
+	idJAGRequestsTotal           *prometheus.CounterVec
+	idJAGPolicyRejectionsTotal   *prometheus.CounterVec
+	idJAGScopeModificationsTotal prometheus.Counter
+
 	sessionConfig *SessionConfig
 
 	mfaProviders    map[string]MFAProvider
@@ -335,6 +405,10 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 
 	allSupportedGrants[grantTypeClientCredentials] = true
 
+	if c.EnterpriseManagedAuthorization.Enabled {
+		allSupportedGrants[grantTypeJWTBearer] = true
+	}
+
 	var supportedGrants []string
 	if len(c.AllowedGrantTypes) > 0 {
 		for _, grant := range c.AllowedGrantTypes {
@@ -375,6 +449,8 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 		now = time.Now
 	}
 
+	idJAGTokensValidFor := value(c.IDJAGTokensValidFor, 5*time.Minute)
+
 	s := &Server{
 		issuerURL:              *issuerURL,
 		connectors:             make(map[string]Connector),
@@ -394,6 +470,11 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 		passwordConnector:      c.PasswordConnector,
 		logger:                 c.Logger,
 		signer:                 c.Signer,
+		enableIDJAG:            c.TokenExchange.IDJAGEnabled(),
+		idJAGTokensValidFor:    idJAGTokensValidFor,
+		tokenExchangePolicies:  c.IDJAGPolicies,
+		enableEMA:              c.EnterpriseManagedAuthorization.Enabled,
+		emaAccountLinking:      c.EnterpriseManagedAuthorization.AccountLinkingByEmail,
 		sessionConfig:          c.SessionConfig,
 		mfaProviders:           c.MFAProviders,
 		defaultMFAChain:        c.DefaultMFAChain,
@@ -409,6 +490,14 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 			}
 			s.logger.Info("dcrSecret not configured, generated random key. Dynamic client registration access tokens will be invalidated on server restart")
 		}
+	}
+
+	if s.enableEMA {
+		verifiers, err := newIDJAGVerifiers(ctx, *issuerURL, c.EnterpriseManagedAuthorization.TrustedIssuers)
+		if err != nil {
+			return nil, fmt.Errorf("server: failed to configure EMA trusted issuers: %v", err)
+		}
+		s.idJAGVerifiers = verifiers
 	}
 
 	// Retrieves connector objects in backend storage. This list includes the static connectors
@@ -465,6 +554,26 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 		}, []string{"code", "method", "handler"})
 
 		c.PrometheusRegistry.MustRegister(requestCounter, durationHist, sizeHist)
+
+		if s.enableIDJAG {
+			s.idJAGRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: "dex_id_jag_requests_total",
+				Help: "Total number of ID-JAG token exchange requests.",
+			}, []string{"result"})
+			s.idJAGPolicyRejectionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: "dex_id_jag_policy_rejections_total",
+				Help: "Total number of ID-JAG policy rejections by reason.",
+			}, []string{"reason"})
+			s.idJAGScopeModificationsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+				Name: "dex_id_jag_scope_modifications_total",
+				Help: "Total number of ID-JAG requests where policy reduced the requested scopes.",
+			})
+			c.PrometheusRegistry.MustRegister(
+				s.idJAGRequestsTotal,
+				s.idJAGPolicyRejectionsTotal,
+				s.idJAGScopeModificationsTotal,
+			)
+		}
 
 		instrumentHandler = func(handlerName string, handler http.Handler) http.HandlerFunc {
 			return promhttp.InstrumentHandlerDuration(durationHist.MustCurryWith(prometheus.Labels{"handler": handlerName}),

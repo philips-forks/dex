@@ -163,7 +163,15 @@ const (
 	grantTypeDeviceCode        = "urn:ietf:params:oauth:grant-type:device_code"
 	grantTypeTokenExchange     = "urn:ietf:params:oauth:grant-type:token-exchange"
 	grantTypeClientCredentials = "client_credentials"
+	// grantTypeJWTBearer is used by an MCP Client to redeem an ID-JAG for an
+	// access token at the MCP Authorization Server (EMA Role B, RFC 7523).
+	grantTypeJWTBearer = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 )
+
+// idJAGGrantProfile is advertised in authorization-server metadata
+// (authorization_grant_profiles_supported) to signal EMA support per the
+// EMA spec §6.
+const idJAGGrantProfile = "urn:ietf:params:oauth:grant-profile:id-jag"
 
 // ConnectorGrantTypes is the set of grant types that can be restricted per connector.
 var ConnectorGrantTypes = map[string]bool{
@@ -183,6 +191,8 @@ const (
 	tokenTypeSAML1   = "urn:ietf:params:oauth:token-type:saml1"
 	tokenTypeSAML2   = "urn:ietf:params:oauth:token-type:saml2"
 	tokenTypeJWT     = "urn:ietf:params:oauth:token-type:jwt"
+	// https://datatracker.ietf.org/doc/draft-ietf-oauth-identity-assertion-authz-grant/
+	tokenTypeIDJAG = "urn:ietf:params:oauth:token-type:id-jag"
 )
 
 const (
@@ -299,6 +309,68 @@ type federatedIDClaims struct {
 
 func (s *Server) newAccessToken(ctx context.Context, clientID string, claims storage.Claims, scopes []string, nonce, connID string, authTime time.Time, connectorData []byte) (accessToken string, expiry time.Time, err error) {
 	return s.newIDToken(ctx, clientID, claims, scopes, nonce, storage.NewID(), "", connID, authTime, connectorData)
+}
+
+// idJAGTyp is the JWT "typ" header value for ID-JAG tokens.
+const idJAGTyp = "oauth-id-jag+jwt"
+
+// idJAGClaims is the JWT payload for an ID-JAG token.
+// Audience is a single string per draft-ietf-oauth-identity-assertion-authz-grant-02.
+type idJAGClaims struct {
+	Issuer   string `json:"iss"`
+	Subject  string `json:"sub"`
+	Audience string `json:"aud"`
+	ClientID string `json:"client_id"`
+	JTI      string `json:"jti"`
+	Expiry   int64  `json:"exp"`
+	IssuedAt int64  `json:"iat"`
+
+	// Email is OPTIONAL. The EMA profile allows an ID-JAG to carry an email
+	// claim that the MCP Authorization Server can use for account linking.
+	Email    string `json:"email,omitempty"`
+	Resource string `json:"resource,omitempty"`
+	Scope    string `json:"scope,omitempty"`
+}
+
+// newIDJAG creates an ID-JAG token with the given subject and audience.
+func (s *Server) newIDJAG(
+	ctx context.Context,
+	clientID string,
+	subject string,
+	email string,
+	audience string,
+	resource string,
+	scopes []string,
+) (token string, jti string, expiry time.Time, err error) {
+	issuedAt := s.now()
+	expiry = issuedAt.Add(s.idJAGTokensValidFor)
+
+	jti = storage.NewID()
+	claims := idJAGClaims{
+		Issuer:   s.issuerURL.String(),
+		Subject:  subject,
+		Audience: audience,
+		ClientID: clientID,
+		JTI:      jti,
+		Expiry:   expiry.Unix(),
+		IssuedAt: issuedAt.Unix(),
+		Email:    email,
+		Resource: resource,
+	}
+
+	if len(scopes) > 0 {
+		claims.Scope = strings.Join(scopes, " ")
+	}
+
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", "", expiry, fmt.Errorf("could not serialize ID-JAG claims: %v", err)
+	}
+
+	if token, err = s.signer.SignWithType(ctx, payload, idJAGTyp); err != nil {
+		return "", "", expiry, fmt.Errorf("failed to sign ID-JAG payload: %v", err)
+	}
+	return token, jti, expiry, nil
 }
 
 func getClientID(aud audience, azp string) (string, error) {

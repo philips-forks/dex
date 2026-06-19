@@ -56,7 +56,7 @@ type Config struct {
 
 	// StaticClients cause the server to use this list of clients rather than
 	// querying the storage. Write operations, like creating a client, will fail.
-	StaticClients []storage.Client `json:"staticClients"`
+	StaticClients []staticClient `json:"staticClients"`
 
 	// If enabled, the server will maintain a list of passwords which can be used
 	// to identify a user.
@@ -229,6 +229,18 @@ func (p *password) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// staticClient wraps storage.Client with optional per-client ID-JAG policy.
+type staticClient struct {
+	storage.Client
+	IDJAGPolicies *IDJAGClientPolicy `json:"idJAGPolicies,omitempty"`
+}
+
+// IDJAGClientPolicy configures allowed audiences and scopes for ID-JAG exchange.
+type IDJAGClientPolicy struct {
+	AllowedAudiences []string `json:"allowedAudiences"`
+	AllowedScopes    []string `json:"allowedScopes"`
+}
+
 // OAuth2 describes enabled OAuth2 extensions.
 type OAuth2 struct {
 	// list of allowed grant types,
@@ -249,6 +261,11 @@ type OAuth2 struct {
 	AllowedScopePrefixes []string `json:"allowedScopePrefixes"`
 	// DCR configuration
 	DCR DCR `json:"dcr"`
+	// TokenExchange configures Token Exchange support.
+	TokenExchange server.TokenExchangeConfig `json:"tokenExchange"`
+	// EnterpriseManagedAuthorization configures Dex as an MCP Authorization
+	// Server (EMA Role B).
+	EnterpriseManagedAuthorization server.EMAConfig `json:"enterpriseManagedAuthorization"`
 }
 
 // DCR holds the configuration for OAuth2 Dynamic Client Registration.
@@ -653,6 +670,9 @@ type Expiry struct {
 
 	// IdTokens defines the duration of time for which the IdTokens will be valid.
 	IDTokens string `json:"idTokens"`
+
+	// IDJAGTokens defines the duration of time for which ID-JAG tokens will be valid.
+	IDJAGTokens string `json:"idJAGTokens"`
 
 	// AuthRequests defines the duration of time for which the AuthRequests will be valid.
 	AuthRequests string `json:"authRequests"`
