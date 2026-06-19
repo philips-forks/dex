@@ -2208,18 +2208,29 @@ func (m *mockSAMLRefreshConnector) Refresh(ctx context.Context, s connector.Scop
 // The token is signed with testKey and has aud=clientID, iss=issuerURL.
 func makeTestJWT(t *testing.T, issuerURL, sub, clientID string) string {
 	t.Helper()
+	return makeTestJWTWithEmail(t, issuerURL, sub, clientID, "", false)
+}
+
+// makeTestJWTWithEmail builds a signed subject token that also carries email
+// and email_verified claims, for exercising EMA account-linking behavior.
+func makeTestJWTWithEmail(t *testing.T, issuerURL, sub, clientID, email string, emailVerified bool) string {
+	t.Helper()
 	claims := struct {
-		Iss string `json:"iss"`
-		Sub string `json:"sub"`
-		Aud string `json:"aud"`
-		Exp int64  `json:"exp"`
-		Iat int64  `json:"iat"`
+		Iss           string `json:"iss"`
+		Sub           string `json:"sub"`
+		Aud           string `json:"aud"`
+		Exp           int64  `json:"exp"`
+		Iat           int64  `json:"iat"`
+		Email         string `json:"email,omitempty"`
+		EmailVerified bool   `json:"email_verified,omitempty"`
 	}{
-		Iss: issuerURL,
-		Sub: sub,
-		Aud: clientID,
-		Exp: time.Now().Add(time.Hour).Unix(),
-		Iat: time.Now().Unix(),
+		Iss:           issuerURL,
+		Sub:           sub,
+		Aud:           clientID,
+		Exp:           time.Now().Add(time.Hour).Unix(),
+		Iat:           time.Now().Unix(),
+		Email:         email,
+		EmailVerified: emailVerified,
 	}
 	payload, err := json.Marshal(claims)
 	require.NoError(t, err)
@@ -2321,6 +2332,60 @@ func TestHandleIDJAGExchange_JWTClaims(t *testing.T) {
 
 	// Verify expires_in is approximately 5 minutes (default).
 	require.InDelta(t, 300, res.ExpiresIn, 5, "expires_in should be ~300s (5m default)")
+}
+
+// TestHandleIDJAGExchange_EmailClaim verifies the EMA profile behavior: a
+// verified email in the subject token is propagated to the ID-JAG email claim
+// for account linking at the MCP Authorization Server, while an unverified
+// email is dropped.
+func TestHandleIDJAGExchange_EmailClaim(t *testing.T) {
+	exchange := func(t *testing.T, email string, emailVerified bool) map[string]interface{} {
+		ctx := t.Context()
+		httpServer, s := newTestServer(t, func(c *Config) {
+			require.NoError(t, c.Storage.CreateClient(ctx, storage.Client{
+				ID:     "client_1",
+				Secret: "secret_1",
+			}))
+			c.TokenExchange = TokenExchangeConfig{TokenTypes: []string{tokenTypeIDJAG}}
+			c.IDJAGPolicies = []TokenExchangePolicy{
+				{ClientID: "client_1", AllowedAudiences: []string{"https://resource-as.example.com"}},
+			}
+		})
+		defer httpServer.Close()
+
+		subjectToken := makeTestJWTWithEmail(t, httpServer.URL, "user-123", "client_1", email, emailVerified)
+
+		vals := url.Values{}
+		vals.Set("grant_type", grantTypeTokenExchange)
+		vals.Set("requested_token_type", tokenTypeIDJAG)
+		vals.Set("subject_token_type", tokenTypeID)
+		vals.Set("subject_token", subjectToken)
+		vals.Set("connector_id", "mock")
+		vals.Set("audience", "https://resource-as.example.com")
+		vals.Set("client_id", "client_1")
+		vals.Set("client_secret", "secret_1")
+
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, httpServer.URL+"/token", strings.NewReader(vals.Encode()))
+		req.Header.Set("content-type", "application/x-www-form-urlencoded")
+		s.handleToken(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code, "body: %s", rr.Body.String())
+		var res accessTokenResponse
+		require.NoError(t, json.NewDecoder(rr.Result().Body).Decode(&res))
+		return decodeJWTPayload(t, res.AccessToken)
+	}
+
+	t.Run("verified email is propagated", func(t *testing.T) {
+		claims := exchange(t, "user@example.com", true)
+		require.Equal(t, "user@example.com", claims["email"], "verified email must appear in ID-JAG")
+	})
+
+	t.Run("unverified email is dropped", func(t *testing.T) {
+		claims := exchange(t, "user@example.com", false)
+		_, present := claims["email"]
+		require.False(t, present, "unverified email must not appear in ID-JAG")
+	})
 }
 
 // TestHandleIDJAGExchange_ResourceAndScope verifies that the resource parameter

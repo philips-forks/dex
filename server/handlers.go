@@ -1982,6 +1982,18 @@ func (s *Server) handleIDJAGExchange(w http.ResponseWriter, r *http.Request, cli
 	}
 	sub := idToken.Subject
 
+	// Extract the email claim from the subject token, if present. EMA uses this
+	// for account linking at the MCP Authorization Server (see the EMA "For MCP
+	// Authorization Servers" section). Only a verified email is propagated.
+	var email string
+	var subjectClaims struct {
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
+	}
+	if err := idToken.Claims(&subjectClaims); err == nil && subjectClaims.EmailVerified {
+		email = subjectClaims.Email
+	}
+
 	policyResult := evaluateIDJAGPolicy(s.tokenExchangePolicies, client.ID, audience, scopes)
 	if policyResult.Denied {
 		if s.idJAGPolicyRejectionsTotal != nil {
@@ -2000,7 +2012,7 @@ func (s *Server) handleIDJAGExchange(w http.ResponseWriter, r *http.Request, cli
 		s.idJAGScopeModificationsTotal.Inc()
 	}
 
-	idJAGToken, jti, expiry, err := s.newIDJAG(ctx, client.ID, sub, audience, resource, grantedScopes)
+	idJAGToken, jti, expiry, err := s.newIDJAG(ctx, client.ID, sub, email, audience, resource, grantedScopes)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to create ID-JAG token", "err", err)
 		s.idJAGReject(ctx, w, "rejected", errServerError, "", http.StatusInternalServerError,

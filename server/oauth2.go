@@ -316,6 +316,9 @@ type idJAGClaims struct {
 	Expiry   int64  `json:"exp"`
 	IssuedAt int64  `json:"iat"`
 
+	// Email is OPTIONAL. The EMA profile allows an ID-JAG to carry an email
+	// claim that the MCP Authorization Server can use for account linking.
+	Email    string `json:"email,omitempty"`
 	Resource string `json:"resource,omitempty"`
 	Scope    string `json:"scope,omitempty"`
 }
@@ -325,6 +328,7 @@ func (s *Server) newIDJAG(
 	ctx context.Context,
 	clientID string,
 	subject string,
+	email string,
 	audience string,
 	resource string,
 	scopes []string,
@@ -341,6 +345,7 @@ func (s *Server) newIDJAG(
 		JTI:      jti,
 		Expiry:   expiry.Unix(),
 		IssuedAt: issuedAt.Unix(),
+		Email:    email,
 		Resource: resource,
 	}
 
