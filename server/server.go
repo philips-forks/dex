@@ -145,6 +145,11 @@ type Config struct {
 
 	IDJAGPolicies []TokenExchangePolicy
 
+	// EnterpriseManagedAuthorization configures Dex as an MCP Authorization
+	// Server (EMA Role B): accepting ID-JAGs minted by a trusted enterprise IdP
+	// and redeeming them for resource-bound access tokens via the jwt-bearer grant.
+	EnterpriseManagedAuthorization EMAConfig
+
 	// SessionConfig holds session settings. Nil when sessions are disabled.
 	SessionConfig *SessionConfig
 
@@ -168,6 +173,36 @@ func (c TokenExchangeConfig) IDJAGEnabled() bool {
 		}
 	}
 	return false
+}
+
+// EMAConfig configures Dex's MCP Authorization Server role for
+// Enterprise-Managed Authorization (EMA Role B).
+type EMAConfig struct {
+	// Enabled turns on the jwt-bearer grant and EMA discovery metadata.
+	Enabled bool `json:"enabled"`
+
+	// TrustedIssuers lists the enterprise IdPs whose ID-JAGs Dex will accept.
+	TrustedIssuers []TrustedIssuer `json:"trustedIssuers"`
+
+	// AccountLinkingByEmail, when true, allows downstream consumers to link the
+	// ID-JAG identity to a local account by its (verified) email claim. When
+	// false (default), only the opaque subject is used.
+	AccountLinkingByEmail bool `json:"accountLinkingByEmail"`
+}
+
+// TrustedIssuer describes an enterprise IdP whose ID-JAGs Dex accepts when
+// acting as an MCP Authorization Server.
+type TrustedIssuer struct {
+	// Issuer is the IdP's issuer identifier; it must match the ID-JAG "iss" claim.
+	Issuer string `json:"issuer"`
+	// JWKSURL is where the IdP publishes its signing keys.
+	JWKSURL string `json:"jwksURL"`
+	// ExpectedAudience is this Dex's own issuer identifier; the ID-JAG "aud"
+	// claim must equal this value (EMA §4: audience is the MCP AS issuer).
+	ExpectedAudience string `json:"expectedAudience"`
+	// AllowedClientIDs optionally restricts which ID-JAG "client_id" values are
+	// accepted from this issuer. Empty means any client_id is accepted.
+	AllowedClientIDs []string `json:"allowedClientIDs"`
 }
 
 // SessionConfig holds resolved session configuration.
@@ -274,6 +309,11 @@ type Server struct {
 	idJAGTokensValidFor   time.Duration
 	tokenExchangePolicies []TokenExchangePolicy
 
+	// EMA Role B (MCP Authorization Server) state.
+	enableEMA         bool
+	emaAccountLinking bool
+	idJAGVerifiers    map[string]*idJAGVerifier // keyed by trusted issuer
+
 	// ID-JAG Prometheus metrics (nil when PrometheusRegistry is not set).
 	idJAGRequestsTotal           *prometheus.CounterVec
 	idJAGPolicyRejectionsTotal   *prometheus.CounterVec
@@ -348,6 +388,10 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 
 	allSupportedGrants[grantTypeClientCredentials] = true
 
+	if c.EnterpriseManagedAuthorization.Enabled {
+		allSupportedGrants[grantTypeJWTBearer] = true
+	}
+
 	var supportedGrants []string
 	if len(c.AllowedGrantTypes) > 0 {
 		for _, grant := range c.AllowedGrantTypes {
@@ -411,9 +455,19 @@ func newServer(ctx context.Context, c Config) (*Server, error) {
 		enableIDJAG:            c.TokenExchange.IDJAGEnabled(),
 		idJAGTokensValidFor:    idJAGTokensValidFor,
 		tokenExchangePolicies:  c.IDJAGPolicies,
+		enableEMA:              c.EnterpriseManagedAuthorization.Enabled,
+		emaAccountLinking:      c.EnterpriseManagedAuthorization.AccountLinkingByEmail,
 		sessionConfig:          c.SessionConfig,
 		mfaProviders:           c.MFAProviders,
 		defaultMFAChain:        c.DefaultMFAChain,
+	}
+
+	if s.enableEMA {
+		verifiers, err := newIDJAGVerifiers(ctx, *issuerURL, c.EnterpriseManagedAuthorization.TrustedIssuers)
+		if err != nil {
+			return nil, fmt.Errorf("server: failed to configure EMA trusted issuers: %v", err)
+		}
+		s.idJAGVerifiers = verifiers
 	}
 
 	// Retrieves connector objects in backend storage. This list includes the static connectors

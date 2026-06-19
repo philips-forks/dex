@@ -147,6 +147,21 @@ web:
 #     tokenTypes:
 #       - urn:ietf:params:oauth:token-type:id_token
 #       - urn:ietf:params:oauth:token-type:id-jag
+#
+#   # Enterprise-Managed Authorization (EMA) for MCP — Dex as MCP Authorization Server.
+#   # When enabled, Dex accepts ID-JAGs minted by a trusted enterprise IdP via the
+#   # jwt-bearer grant and issues access tokens audience-restricted to the MCP server.
+#   enterpriseManagedAuthorization:
+#     enabled: true
+#     # When true, the verified email from the ID-JAG is carried into the issued token.
+#     accountLinkingByEmail: false
+#     trustedIssuers:
+#       - issuer: "https://acme.okta.example"
+#         jwksURL: "https://acme.okta.example/oauth2/v1/keys"
+#         # Defaults to Dex's own issuer; the ID-JAG "aud" must equal this.
+#         expectedAudience: "https://mcp-as.example/"
+#         # Optional allow-list of accepted ID-JAG client_id values.
+#         allowedClientIDs: ["f53f191f9311af35"]
 
 # Static clients registered in Dex by default.
 #

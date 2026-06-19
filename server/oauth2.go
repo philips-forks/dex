@@ -162,7 +162,15 @@ const (
 	grantTypeDeviceCode        = "urn:ietf:params:oauth:grant-type:device_code"
 	grantTypeTokenExchange     = "urn:ietf:params:oauth:grant-type:token-exchange"
 	grantTypeClientCredentials = "client_credentials"
+	// grantTypeJWTBearer is used by an MCP Client to redeem an ID-JAG for an
+	// access token at the MCP Authorization Server (EMA Role B, RFC 7523).
+	grantTypeJWTBearer = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 )
+
+// idJAGGrantProfile is advertised in authorization-server metadata
+// (authorization_grant_profiles_supported) to signal EMA support per the
+// EMA spec §6.
+const idJAGGrantProfile = "urn:ietf:params:oauth:grant-profile:id-jag"
 
 // ConnectorGrantTypes is the set of grant types that can be restricted per connector.
 var ConnectorGrantTypes = map[string]bool{

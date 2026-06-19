@@ -91,6 +91,7 @@ type discovery struct {
 	Claims                     []string `json:"claims_supported"`
 	IDJAGSigningAlgs           []string `json:"id_jag_signing_alg_values_supported,omitempty"`
 	IdentityChainingTokenTypes []string `json:"identity_chaining_requested_token_types_supported,omitempty"`
+	GrantProfilesSupported     []string `json:"authorization_grant_profiles_supported,omitempty"`
 }
 
 func (s *Server) discoveryHandler(ctx context.Context) (http.HandlerFunc, error) {
@@ -139,6 +140,12 @@ func (s *Server) constructDiscovery(ctx context.Context) discovery {
 	if s.enableIDJAG {
 		d.IDJAGSigningAlgs = d.IDTokenAlgs
 		d.IdentityChainingTokenTypes = []string{tokenTypeIDJAG}
+	}
+
+	if s.enableEMA {
+		// EMA §6: advertise support for the ID-JAG authorization grant profile so
+		// MCP clients use the brokered flow instead of the authorization endpoint.
+		d.GrantProfilesSupported = append(d.GrantProfilesSupported, idJAGGrantProfile)
 	}
 
 	for responseType := range s.supportedResponseTypes {
@@ -1298,6 +1305,8 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		s.withClientFromStorage(w, r, s.handleTokenExchange)
 	case grantTypeClientCredentials:
 		s.withClientFromStorage(w, r, s.handleClientCredentialsGrant)
+	case grantTypeJWTBearer:
+		s.withClientFromStorage(w, r, s.handleJWTBearerGrant)
 	default:
 		s.tokenErrHelper(w, errUnsupportedGrantType, "", http.StatusBadRequest)
 	}

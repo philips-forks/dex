@@ -259,6 +259,9 @@ type OAuth2 struct {
 	PKCE PKCE `json:"pkce"`
 	// TokenExchange configures Token Exchange support.
 	TokenExchange server.TokenExchangeConfig `json:"tokenExchange"`
+	// EnterpriseManagedAuthorization configures Dex as an MCP Authorization
+	// Server (EMA Role B).
+	EnterpriseManagedAuthorization server.EMAConfig `json:"enterpriseManagedAuthorization"`
 }
 
 // PKCE holds the PKCE (Proof Key for Code Exchange) configuration.
