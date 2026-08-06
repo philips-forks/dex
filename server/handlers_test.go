@@ -25,6 +25,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/dexidp/dex/connector"
+	"github.com/dexidp/dex/connector/mock"
 	"github.com/dexidp/dex/server/internal"
 	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/storage"
@@ -3146,3 +3147,80 @@ func TestBackLinkIncludesPromptSelectAccount(t *testing.T) {
 	require.Equal(t, "select_account", backURL.Query().Get("prompt"),
 		"back link should include prompt=select_account")
 }
+
+type mockCookieCallback struct {
+	connector.CallbackConnector
+	cookieState bool
+}
+
+func (m *mockCookieCallback) StateViaCookie() bool {
+	return m.cookieState
+}
+
+func TestHSDPStateViaCookie(t *testing.T) {
+	httpServer, server := newTestServer(t, nil)
+	defer httpServer.Close()
+
+	ctx := t.Context()
+	connID := "hsdp-test"
+
+	mockConn := &mockCookieCallback{
+		CallbackConnector: mock.NewCallbackConnector(server.logger).(connector.CallbackConnector),
+		cookieState:       true,
+	}
+	registerTestConnector(t, server, connID, mockConn)
+
+	client := storage.Client{
+		ID:           "test-client",
+		Secret:       "test-secret",
+		RedirectURIs: []string{"http://example.com/callback"},
+	}
+	require.NoError(t, server.storage.CreateClient(ctx, client))
+
+	// 1. Initiate login via /auth/hsdp-test
+	authReqURL := fmt.Sprintf("%s/auth/%s?response_type=code&client_id=test-client&redirect_uri=http://example.com/callback&scope=openid", httpServer.URL, connID)
+	req := httptest.NewRequest(http.MethodGet, authReqURL, nil)
+	rr := httptest.NewRecorder()
+	server.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusFound, rr.Code)
+
+	// Check for hsdp_state cookie
+	cookies := rr.Result().Cookies()
+	var hsdpCookie *http.Cookie
+	for _, c := range cookies {
+		if c.Name == "hsdp_state" {
+			hsdpCookie = c
+			break
+		}
+	}
+	require.NotNil(t, hsdpCookie, "expected hsdp_state cookie to be set")
+
+	authID := hsdpCookie.Value
+	require.NotEmpty(t, authID)
+
+	// 2. Simulate callback without state query param, but with hsdp_state cookie
+	callbackURL := fmt.Sprintf("%s/callback/%s", httpServer.URL, connID)
+	callbackReq := httptest.NewRequest(http.MethodGet, callbackURL, nil)
+	callbackReq.AddCookie(hsdpCookie)
+	callbackRR := httptest.NewRecorder()
+	server.ServeHTTP(callbackRR, callbackReq)
+
+	// Callback should succeed and redirect to client redirect_uri
+	require.Equal(t, http.StatusSeeOther, callbackRR.Code)
+	loc := callbackRR.Header().Get("Location")
+	require.Contains(t, loc, "http://example.com/callback")
+
+	// Verify hsdp_state cookie was cleared in callback response
+	callbackCookies := callbackRR.Result().Cookies()
+	var clearedCookie *http.Cookie
+	for _, c := range callbackCookies {
+		if c.Name == "hsdp_state" {
+			clearedCookie = c
+			break
+		}
+	}
+	require.NotNil(t, clearedCookie, "expected hsdp_state cookie clear header in response")
+	require.Equal(t, -1, clearedCookie.MaxAge)
+}
+

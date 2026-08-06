@@ -530,6 +530,17 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+			if scc, ok := conn.(interface{ StateViaCookie() bool }); ok && scc.StateViaCookie() {
+				http.SetCookie(w, &http.Cookie{
+					Name:     "hsdp_state",
+					Value:    authReq.ID,
+					Path:     "/",
+					HttpOnly: true,
+					Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+					SameSite: http.SameSiteLaxMode,
+					MaxAge:   3600,
+				})
+			}
 			http.Redirect(w, r, callbackURL, http.StatusFound)
 		case connector.PasswordConnector:
 			loginURL := url.URL{
@@ -723,17 +734,35 @@ func (s *Server) handleConnectorCallback(w http.ResponseWriter, r *http.Request)
 	switch r.Method {
 	case http.MethodGet: // OAuth2 callback
 		if authID = r.URL.Query().Get("state"); authID == "" {
-			s.renderError(r, w, http.StatusBadRequest, "User session error.")
-			return
+			if cookie, err := r.Cookie("hsdp_state"); err == nil && cookie.Value != "" {
+				authID = cookie.Value
+			} else {
+				s.renderError(r, w, http.StatusBadRequest, "User session error.")
+				return
+			}
 		}
 	case http.MethodPost: // SAML POST binding
 		if authID = r.PostFormValue("RelayState"); authID == "" {
-			s.renderError(r, w, http.StatusBadRequest, "User session error.")
-			return
+			if cookie, err := r.Cookie("hsdp_state"); err == nil && cookie.Value != "" {
+				authID = cookie.Value
+			} else {
+				s.renderError(r, w, http.StatusBadRequest, "User session error.")
+				return
+			}
 		}
 	default:
 		s.renderError(r, w, http.StatusBadRequest, "Method not supported")
 		return
+	}
+
+	if cookie, err := r.Cookie("hsdp_state"); err == nil && cookie.Value != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "hsdp_state",
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+		})
 	}
 
 	authReq, err := s.storage.GetAuthRequest(ctx, authID)
