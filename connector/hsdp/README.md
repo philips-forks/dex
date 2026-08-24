@@ -11,6 +11,9 @@ Dex is deployed using the [helm chart](https://artifacthub.io/packages/helm/dex/
 When deploying Dex with the HSP IAM connector, you need to configure the connector in the Dex configuration file.
 Helm chart users can configure the connector in the `values.yaml` file.
 
+OAuth2 authorization code logins use PKCE with the S256 code challenge method automatically.
+The SAML assertion flow is unaffected.
+
 Connector section example:
 
 ```yaml

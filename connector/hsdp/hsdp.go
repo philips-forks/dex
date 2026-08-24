@@ -84,6 +84,10 @@ type ConnectorData struct {
 	User             iam.Profile
 }
 
+type pkceData struct {
+	CodeVerifier string `json:"codeVerifier"`
+}
+
 type caller uint
 
 const (
@@ -262,7 +266,15 @@ func (c *HSDPConnector) LoginURL(s connector.Scopes, callbackURL, state string) 
 	if s.OfflineAccess {
 		opts = append(opts, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", c.promptType))
 	}
-	return c.oauth2Config.AuthCodeURL(state, opts...), nil, nil
+
+	codeVerifier := oauth2.GenerateVerifier()
+	connectorData, err := json.Marshal(pkceData{CodeVerifier: codeVerifier})
+	if err != nil {
+		return "", nil, fmt.Errorf("hsdp: failed to create PKCE data: %v", err)
+	}
+	opts = append(opts, oauth2.S256ChallengeOption(codeVerifier))
+
+	return c.oauth2Config.AuthCodeURL(state, opts...), connectorData, nil
 }
 
 type oauth2Error struct {
@@ -298,7 +310,7 @@ func extractAssertion(r *http.Request) string {
 	return ""
 }
 
-func (c *HSDPConnector) HandleCallback(s connector.Scopes, _ []byte, r *http.Request) (identity connector.Identity, err error) {
+func (c *HSDPConnector) HandleCallback(s connector.Scopes, connData []byte, r *http.Request) (identity connector.Identity, err error) {
 	q := r.URL.Query()
 	if errType := q.Get("error"); errType != "" {
 		return identity, &oauth2Error{errType, q.Get("error_description")}
@@ -347,7 +359,21 @@ func (c *HSDPConnector) HandleCallback(s connector.Scopes, _ []byte, r *http.Req
 	}
 
 	if code != "" {
-		token, err := c.oauth2Config.Exchange(r.Context(), code)
+		var opts []oauth2.AuthCodeOption
+		if len(connData) > 0 {
+			var data pkceData
+			if err := json.Unmarshal(connData, &data); err != nil {
+				return identity, fmt.Errorf("hsdp: failed to parse PKCE data: %v", err)
+			}
+			if data.CodeVerifier == "" {
+				return identity, errors.New("hsdp: PKCE code verifier is missing")
+			}
+			opts = append(opts, oauth2.VerifierOption(data.CodeVerifier))
+		} else if !c.isSAML() {
+			return identity, errors.New("hsdp: PKCE data is missing")
+		}
+
+		token, err := c.oauth2Config.Exchange(r.Context(), code, opts...)
 		if err != nil {
 			return identity, fmt.Errorf("oidc: failed to get token: %v", err)
 		}

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -14,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -52,7 +54,10 @@ func TestHandleCallback(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			testServer, iamServer, idmServer, err := setupServers(tc.token)
+			receivedCodeVerifier := make(chan string, 1)
+			testServer, iamServer, idmServer, err := setupServers(tc.token, func(r *http.Request) {
+				receivedCodeVerifier <- r.FormValue("code_verifier")
+			})
 			if err != nil {
 				t.Fatal("failed to setup test server", err)
 			}
@@ -84,12 +89,18 @@ func TestHandleCallback(t *testing.T) {
 				t.Fatal("failed to create new connector", err)
 			}
 
+			_, connectorData, err := conn.LoginURL(connector.Scopes{}, config.RedirectURI, "state")
+			if err != nil {
+				t.Fatal("failed to create login URL", err)
+			}
+			codeVerifier := verifierFromConnectorData(t, connectorData)
+
 			req, err := newRequestWithAuthCode(testServer.URL, "someCode")
 			if err != nil {
 				t.Fatal("failed to create request", err)
 			}
 
-			identity, err := conn.HandleCallback(connector.Scopes{Groups: true}, nil, req)
+			identity, err := conn.HandleCallback(connector.Scopes{Groups: true}, connectorData, req)
 			if err != nil {
 				t.Fatal("handle callback failed", err)
 			}
@@ -103,7 +114,92 @@ func TestHandleCallback(t *testing.T) {
 			if !reflect.DeepEqual(identity.EmailVerified, true) {
 				t.Errorf("Expected %+v to equal %+v", identity.EmailVerified, true)
 			}
+			if got := <-receivedCodeVerifier; got != codeVerifier {
+				t.Errorf("expected token exchange code_verifier %q, got %q", codeVerifier, got)
+			}
 		})
+	}
+}
+
+func TestLoginURL_PKCE(t *testing.T) {
+	testServer, iamServer, idmServer, err := setupServers(map[string]interface{}{})
+	if err != nil {
+		t.Fatal("failed to setup test server", err)
+	}
+	defer testServer.Close()
+	defer iamServer.Close()
+	defer idmServer.Close()
+
+	config := hsdp.Config{
+		Issuer:       testServer.URL,
+		ClientID:     "clientID",
+		ClientSecret: "clientSecret",
+		IAMURL:       iamServer.URL,
+		IDMURL:       idmServer.URL,
+		RedirectURI:  fmt.Sprintf("%s/callback", testServer.URL),
+	}
+
+	conn, err := newConnector(config)
+	if err != nil {
+		t.Fatal("failed to create connector", err)
+	}
+
+	loginURL, connectorData, err := conn.LoginURL(connector.Scopes{}, config.RedirectURI, "state")
+	if err != nil {
+		t.Fatal("failed to create login URL", err)
+	}
+
+	u, err := url.Parse(loginURL)
+	if err != nil {
+		t.Fatal("failed to parse login URL", err)
+	}
+
+	codeVerifier := verifierFromConnectorData(t, connectorData)
+	sum := sha256.Sum256([]byte(codeVerifier))
+	expectedChallenge := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	if got := u.Query().Get("code_challenge"); got != expectedChallenge {
+		t.Errorf("expected code_challenge %q, got %q", expectedChallenge, got)
+	}
+	if got := u.Query().Get("code_challenge_method"); got != "S256" {
+		t.Errorf("expected code_challenge_method %q, got %q", "S256", got)
+	}
+}
+
+func TestHandleCallback_MissingPKCEData(t *testing.T) {
+	testServer, iamServer, idmServer, err := setupServers(map[string]interface{}{})
+	if err != nil {
+		t.Fatal("failed to setup test server", err)
+	}
+	defer testServer.Close()
+	defer iamServer.Close()
+	defer idmServer.Close()
+
+	config := hsdp.Config{
+		Issuer:       testServer.URL,
+		ClientID:     "clientID",
+		ClientSecret: "clientSecret",
+		IAMURL:       iamServer.URL,
+		IDMURL:       idmServer.URL,
+		RedirectURI:  fmt.Sprintf("%s/callback", testServer.URL),
+	}
+
+	conn, err := newConnector(config)
+	if err != nil {
+		t.Fatal("failed to create connector", err)
+	}
+
+	req, err := newRequestWithAuthCode(testServer.URL, "someCode")
+	if err != nil {
+		t.Fatal("failed to create request", err)
+	}
+
+	_, err = conn.HandleCallback(connector.Scopes{}, nil, req)
+	if err == nil {
+		t.Fatal("expected missing PKCE data to fail")
+	}
+	if got, want := err.Error(), "hsdp: PKCE data is missing"; got != want {
+		t.Errorf("expected error %q, got %q", want, got)
 	}
 }
 
@@ -121,13 +217,13 @@ func TestHandleCallback_DynamicSAML(t *testing.T) {
 	defer idmServer.Close()
 
 	config := hsdp.Config{
-		Issuer:       testServer.URL,
-		ClientID:     "clientID",
+		Issuer:      testServer.URL,
+		ClientID:    "clientID",
 		ClientSecret: "clientSecret",
-		Scopes:       []string{"email"},
-		IAMURL:       iamServer.URL,
-		IDMURL:       idmServer.URL,
-		RedirectURI:  fmt.Sprintf("%s/callback", testServer.URL),
+		Scopes:      []string{"email"},
+		IAMURL:      iamServer.URL,
+		IDMURL:      idmServer.URL,
+		RedirectURI: fmt.Sprintf("%s/callback", testServer.URL),
 		// saml2LoginURL is deliberately NOT set
 	}
 
@@ -165,13 +261,13 @@ func TestHandleCallback_SAMLResponseAlias(t *testing.T) {
 	defer idmServer.Close()
 
 	config := hsdp.Config{
-		Issuer:      testServer.URL,
-		ClientID:    "clientID",
+		Issuer:       testServer.URL,
+		ClientID:     "clientID",
 		ClientSecret: "clientSecret",
-		Scopes:      []string{"email"},
-		IAMURL:      iamServer.URL,
-		IDMURL:      idmServer.URL,
-		RedirectURI: fmt.Sprintf("%s/callback", testServer.URL),
+		Scopes:       []string{"email"},
+		IAMURL:       iamServer.URL,
+		IDMURL:       idmServer.URL,
+		RedirectURI:  fmt.Sprintf("%s/callback", testServer.URL),
 	}
 
 	conn, err := newConnector(config)
@@ -277,7 +373,7 @@ func TestHandleCallback_MissingParams(t *testing.T) {
 	}
 }
 
-func setupServers(tok map[string]interface{}) (dexmux *httptest.Server, iammux *httptest.Server, idmmux *httptest.Server, err error) {
+func setupServers(tok map[string]interface{}, tokenRequestObservers ...func(*http.Request)) (dexmux *httptest.Server, iammux *httptest.Server, idmmux *httptest.Server, err error) {
 	key, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to generate rsa key: %v", err)
@@ -305,6 +401,10 @@ func setupServers(tok map[string]interface{}) (dexmux *httptest.Server, iammux *
 	})
 
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		for _, observe := range tokenRequestObservers {
+			observe(r)
+		}
+
 		url := fmt.Sprintf("http://%s", r.Host)
 		tok["iss"] = url
 		tok["exp"] = time.Now().Add(time.Hour).Unix()
@@ -449,6 +549,21 @@ func newRequestWithAuthCode(serverURL string, code string) (*http.Request, error
 	return req, nil
 }
 
+func verifierFromConnectorData(t *testing.T, connectorData []byte) string {
+	t.Helper()
+
+	var data struct {
+		CodeVerifier string `json:"codeVerifier"`
+	}
+	if err := json.Unmarshal(connectorData, &data); err != nil {
+		t.Fatal("failed to parse PKCE connector data", err)
+	}
+	if data.CodeVerifier == "" {
+		t.Fatal("PKCE connector data did not contain a code verifier")
+	}
+	return data.CodeVerifier
+}
+
 func n(pub *rsa.PublicKey) string {
 	return encode(pub.N.Bytes())
 }
@@ -494,4 +609,3 @@ func TestStateViaCookieConfig(t *testing.T) {
 		t.Errorf("expected conn.StateViaCookie() to be true")
 	}
 }
-
