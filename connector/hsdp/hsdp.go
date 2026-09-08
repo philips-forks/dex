@@ -486,11 +486,22 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 		cd.User = *user
 	}
 
+	username := introspectResponse.Username
+	preferredUsername := introspectResponse.Username
+	if user != nil {
+		if displayName := strings.TrimSpace(user.DisplayName); displayName != "" {
+			username = displayName
+		} else if givenName, familyName := strings.TrimSpace(user.GivenName), strings.TrimSpace(user.FamilyName); givenName != "" && familyName != "" {
+			username = givenName + " " + familyName
+		}
+	}
+
 	identity = connector.Identity{
-		UserID:        introspectResponse.Sub,
-		Username:      introspectResponse.Username,
-		Email:         email,
-		EmailVerified: emailVerified,
+		UserID:            introspectResponse.Sub,
+		Username:          username,
+		PreferredUsername: preferredUsername,
+		Email:             email,
+		EmailVerified:     emailVerified,
 	}
 
 	// Attach connector data
