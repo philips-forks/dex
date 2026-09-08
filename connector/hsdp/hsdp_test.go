@@ -31,16 +31,18 @@ func TestHandleCallback(t *testing.T) {
 	t.Helper()
 
 	tests := []struct {
-		name           string
-		scopes         []string
-		expectUserID   string
-		expectUserName string
-		token          map[string]interface{}
+		name                    string
+		scopes                  []string
+		expectUserID            string
+		expectUserName          string
+		expectPreferredUserName string
+		token                   map[string]interface{}
 	}{
 		{
-			name:           "simpleCase",
-			expectUserID:   "subvalue",
-			expectUserName: "username",
+			name:                    "simpleCase",
+			expectUserID:            "subvalue",
+			expectUserName:          "Ron Swanson",
+			expectPreferredUserName: "username",
 			token: map[string]interface{}{
 				"sub":         "subvalue",
 				"name":        "namevalue",
@@ -110,6 +112,9 @@ func TestHandleCallback(t *testing.T) {
 			}
 			if !reflect.DeepEqual(identity.Username, tc.expectUserName) {
 				t.Errorf("Expected %+v to equal %+v", identity.Username, tc.expectUserName)
+			}
+			if !reflect.DeepEqual(identity.PreferredUsername, tc.expectPreferredUserName) {
+				t.Errorf("Expected %+v to equal %+v", identity.PreferredUsername, tc.expectPreferredUserName)
 			}
 			if !reflect.DeepEqual(identity.EmailVerified, true) {
 				t.Errorf("Expected %+v to equal %+v", identity.EmailVerified, true)
