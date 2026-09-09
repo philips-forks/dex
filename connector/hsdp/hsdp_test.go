@@ -222,13 +222,13 @@ func TestHandleCallback_DynamicSAML(t *testing.T) {
 	defer idmServer.Close()
 
 	config := hsdp.Config{
-		Issuer:      testServer.URL,
-		ClientID:    "clientID",
+		Issuer:       testServer.URL,
+		ClientID:     "clientID",
 		ClientSecret: "clientSecret",
-		Scopes:      []string{"email"},
-		IAMURL:      iamServer.URL,
-		IDMURL:      idmServer.URL,
-		RedirectURI: fmt.Sprintf("%s/callback", testServer.URL),
+		Scopes:       []string{"email"},
+		IAMURL:       iamServer.URL,
+		IDMURL:       idmServer.URL,
+		RedirectURI:  fmt.Sprintf("%s/callback", testServer.URL),
 		// saml2LoginURL is deliberately NOT set
 	}
 
