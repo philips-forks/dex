@@ -3,13 +3,18 @@ package tokens
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/url"
 	"testing"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v4"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dexidp/dex/connector"
+	"github.com/dexidp/dex/server/connectors"
 	"github.com/dexidp/dex/server/internal"
 	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/storage"
@@ -74,3 +79,84 @@ func TestIssuerIssue(t *testing.T) {
 	require.NotEmpty(t, ts2.IDToken)
 	require.Empty(t, ts2.RefreshToken)
 }
+
+// extendingConnector implements connector.PayloadExtender to verify SignIDToken
+// offers connectors a chance to add claims from their stashed connector data.
+type extendingConnector struct {
+	err error
+}
+
+func (e *extendingConnector) ExtendPayload(scopes []string, payload, connectorData []byte) ([]byte, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, err
+	}
+	claims["connector_data"] = string(connectorData)
+	return json.Marshal(claims)
+}
+
+func decodeIDTokenClaims(t *testing.T, idToken string) map[string]any {
+	t.Helper()
+	parsed, err := jose.ParseSigned(idToken, []jose.SignatureAlgorithm{jose.RS256})
+	require.NoError(t, err)
+
+	var claims map[string]any
+	require.NoError(t, json.Unmarshal(parsed.UnsafePayloadWithoutVerification(), &claims))
+	return claims
+}
+
+// newTestConnectorCache registers conn under "mock" in a cache backed by store,
+// mirroring how the server wires Issuer.Connectors to its live connector cache.
+func newTestConnectorCache(t *testing.T, store storage.Storage, conn connector.Connector) *connectors.Cache {
+	t.Helper()
+	cache := connectors.NewCache(store, func(storage.Connector) (connector.Connector, error) {
+		return conn, nil
+	})
+	require.NoError(t, store.CreateConnector(t.Context(), storage.Connector{ID: "mock", ResourceVersion: "1"}))
+	return cache
+}
+
+func TestSignIDTokenExtendsPayloadViaConnector(t *testing.T) {
+	ctx := t.Context()
+	iss, store := newTestIssuer(t)
+	iss.Connectors = newTestConnectorCache(t, store, &extendingConnector{})
+
+	auth := testAuthorization()
+	idToken, _, err := iss.SignIDToken(ctx, auth, "", "")
+	require.NoError(t, err)
+
+	claims := decodeIDTokenClaims(t, idToken)
+	require.Equal(t, string(auth.ConnectorData), claims["connector_data"])
+}
+
+func TestSignIDTokenIgnoresPayloadExtenderError(t *testing.T) {
+	ctx := t.Context()
+	iss, store := newTestIssuer(t)
+	iss.Connectors = newTestConnectorCache(t, store, &extendingConnector{err: errors.New("boom")})
+
+	auth := testAuthorization()
+	idToken, _, err := iss.SignIDToken(ctx, auth, "", "")
+	require.NoError(t, err)
+
+	claims := decodeIDTokenClaims(t, idToken)
+	require.NotContains(t, claims, "connector_data")
+}
+
+func TestSignIDTokenSkipsExtenderWithoutConnectorData(t *testing.T) {
+	ctx := t.Context()
+	iss, store := newTestIssuer(t)
+	iss.Connectors = newTestConnectorCache(t, store, &extendingConnector{})
+
+	auth := testAuthorization()
+	auth.ConnectorData = nil
+	idToken, _, err := iss.SignIDToken(ctx, auth, "", "")
+	require.NoError(t, err)
+
+	claims := decodeIDTokenClaims(t, idToken)
+	require.NotContains(t, claims, "connector_data")
+}
+
+var _ connector.PayloadExtender = (*extendingConnector)(nil)
