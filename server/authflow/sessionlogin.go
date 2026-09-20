@@ -69,6 +69,17 @@ func (h *Handler) trySessionLoginWithSession(ctx context.Context, r *http.Reques
 		}
 	}
 
+	// An empty Username means this UserIdentity was written by a connector
+	// bug or before name-claim population existed. Session reuse never
+	// re-invokes the connector (finalizeLogin, the only writer, runs solely
+	// on the full /callback and password-connector paths), so a stale empty
+	// value here would otherwise be replayed into every ID token/userinfo
+	// response for the life of the session. Force a real re-auth instead so
+	// finalizeLogin refreshes it from a live connector call.
+	if ui.Claims.Username == "" {
+		return false
+	}
+
 	if directLogin {
 		h.Logger.DebugContext(ctx, "session: re-authenticated from session",
 			"session_id", session.ID, "user_id", session.UserID)

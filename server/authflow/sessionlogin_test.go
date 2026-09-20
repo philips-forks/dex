@@ -798,6 +798,81 @@ func TestTrySessionLogin_MaxAge(t *testing.T) {
 	})
 }
 
+// TestTrySessionLogin_EmptyUsername verifies that session reuse does not
+// indefinitely replay a UserIdentity whose Username was never populated
+// (e.g. a historical connector bug, or a record predating name-claim
+// mapping) - finalizeLogin is the only writer of UserIdentity.Claims, and it
+// never runs on the session-reuse path, so a stale empty value would
+// otherwise be baked into every subsequent ID token/userinfo response for
+// the life of the session.
+func TestTrySessionLogin_EmptyUsername(t *testing.T) {
+	ctx := t.Context()
+
+	t.Run("empty cached Username forces re-auth instead of replaying it", func(t *testing.T) {
+		s := newTestSessionServer(t)
+		now := s.Now()
+
+		require.NoError(t, s.Storage.CreateAuthSession(ctx, storage.AuthSession{
+			UserID:      "user-1",
+			ConnectorID: "mock",
+			ID:          "test-nonce", Secret: "test-nonce",
+			ClientStates: map[string]*storage.ClientAuthState{
+				"client-1": {
+					AuthenticatedAt: now.Add(-1 * time.Minute),
+					LastActivity:    now.Add(-1 * time.Minute),
+				},
+			},
+			CreatedAt:      now.Add(-30 * time.Minute),
+			LastActivity:   now.Add(-1 * time.Minute),
+			AbsoluteExpiry: now.Add(24 * time.Hour),
+			IdleExpiry:     now.Add(59 * time.Minute),
+		}))
+
+		require.NoError(t, s.Storage.CreateUserIdentity(ctx, storage.UserIdentity{
+			UserID:      "user-1",
+			ConnectorID: "mock",
+			Claims: storage.Claims{
+				UserID:   "user-1",
+				Username: "",
+				Email:    "test@example.com",
+			},
+			Consents:  map[string][]string{"client-1": {"openid", "email"}},
+			CreatedAt: now.Add(-1 * time.Hour),
+			LastLogin: now.Add(-30 * time.Minute),
+		}))
+
+		authReq := storage.AuthRequest{
+			ID:          storage.NewID(),
+			ClientID:    "client-1",
+			ConnectorID: "mock",
+			Scopes:      []string{"openid", "email", "profile"},
+			RedirectURI: "http://localhost/callback",
+			MaxAge:      -1,
+			HMACKey:     storage.NewHMACKey(crypto.SHA256),
+			Expiry:      now.Add(10 * time.Minute),
+		}
+		require.NoError(t, s.Storage.CreateAuthRequest(ctx, authReq))
+
+		r := sessionCookieRequest("test-nonce")
+		w := httptest.NewRecorder()
+
+		ok := s.trySessionLogin(ctx, r, w, &authReq)
+		assert.False(t, ok, "session reuse must not replay a cached identity with an empty Username")
+	})
+
+	t.Run("non-empty cached Username still reuses the session normally", func(t *testing.T) {
+		s := newTestSessionServer(t)
+		s.SkipApproval = true
+		authReq := setupSessionLoginFixture(t, s)
+
+		r := sessionCookieRequest("test-nonce")
+		w := httptest.NewRecorder()
+
+		ok := s.trySessionLogin(ctx, r, w, &authReq)
+		assert.True(t, ok, "a normally-populated identity should still be reused")
+	})
+}
+
 func TestTrySessionLoginWithSession_IDTokenHint(t *testing.T) {
 	ctx := t.Context()
 
