@@ -126,6 +126,75 @@ func TestHandleCallback(t *testing.T) {
 	}
 }
 
+// Regression test: identity.Groups must be populated from the user's IAM
+// role assignments during HandleCallback (before finalizeLogin's
+// AllowedGroups check runs), not only later via ExtendPayload at
+// token-minting time.
+func TestHandleCallback_GroupsFromIAMRoles(t *testing.T) {
+	tok := map[string]interface{}{
+		"sub":         "subvalue",
+		"name":        "namevalue",
+		"username":    "username",
+		"email":       "emailvalue",
+		"given_name":  "givenname",
+		"family_name": "familyname",
+		"organizations": map[string]interface{}{
+			"organizationList": []map[string]interface{}{
+				{
+					"organizationId": "org1",
+					"roles":          []string{"Admin"},
+				},
+			},
+		},
+	}
+
+	testServer, iamServer, idmServer, err := setupServers(tok)
+	if err != nil {
+		t.Fatal("failed to setup test server", err)
+	}
+	defer testServer.Close()
+	defer iamServer.Close()
+	defer idmServer.Close()
+
+	basicAuth := true
+	config := hsdp.Config{
+		Issuer:               testServer.URL,
+		ClientID:             "clientID",
+		ClientSecret:         "clientSecret",
+		Scopes:               []string{"email", "groups"},
+		IAMURL:               iamServer.URL,
+		IDMURL:               idmServer.URL,
+		RedirectURI:          fmt.Sprintf("%s/callback", testServer.URL),
+		BasicAuthUnsupported: &basicAuth,
+		EnableRoleClaim:      true,
+	}
+
+	conn, err := newConnector(config)
+	if err != nil {
+		t.Fatal("failed to create new connector", err)
+	}
+
+	_, connectorData, err := conn.LoginURL(connector.Scopes{}, config.RedirectURI, "state")
+	if err != nil {
+		t.Fatal("failed to create login URL", err)
+	}
+
+	req, err := newRequestWithAuthCode(testServer.URL, "someCode")
+	if err != nil {
+		t.Fatal("failed to create request", err)
+	}
+
+	identity, err := conn.HandleCallback(connector.Scopes{Groups: true}, connectorData, req)
+	if err != nil {
+		t.Fatal("handle callback failed", err)
+	}
+
+	want := []string{"urn:iamr:org1:admin"}
+	if !reflect.DeepEqual(identity.Groups, want) {
+		t.Errorf("identity.Groups = %+v, want %+v", identity.Groups, want)
+	}
+}
+
 func TestLoginURL_PKCE(t *testing.T) {
 	testServer, iamServer, idmServer, err := setupServers(map[string]interface{}{})
 	if err != nil {
@@ -444,11 +513,18 @@ func setupServers(tok map[string]interface{}, tokenRequestObservers ...func(*htt
 
 	mux.HandleFunc("/introspect", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(&iam.IntrospectResponse{
-			Active:   true,
-			Username: tok["username"].(string),
-			Sub:      tok["sub"].(string),
-		})
+		resp := map[string]interface{}{
+			"active":   true,
+			"username": tok["username"],
+			"sub":      tok["sub"],
+		}
+		// Tests can set tok["organizations"] to an
+		// {"organizationList": [{"organizationId": ..., "roles": [...]}]}-shaped
+		// value to exercise IAM role/group derived behavior.
+		if orgs, ok := tok["organizations"]; ok {
+			resp["organizations"] = orgs
+		}
+		json.NewEncoder(w).Encode(resp)
 	})
 	mux.HandleFunc("/userinfo", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
