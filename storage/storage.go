@@ -203,6 +203,12 @@ type Client struct {
 	// If empty, all connectors are allowed.
 	AllowedConnectors []string `json:"allowedConnectors"`
 
+	// AllowedGroups restricts SSO for this client to users that belong to at least
+	// one of these IdP groups. Empty means no restriction. Unlike a connector's own
+	// allowedGroups (OIDC/SAML/OpenShift config), this is per client, so multiple
+	// clients sharing one connector can each require different groups.
+	AllowedGroups []string `json:"allowedGroups,omitempty"`
+
 	// MFAChain is an ordered list of MFA authenticator IDs that a user must complete
 	// during login. Empty means no MFA required.
 	MFAChain []string `json:"mfaChain"`

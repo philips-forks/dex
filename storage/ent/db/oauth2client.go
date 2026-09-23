@@ -42,6 +42,8 @@ type OAuth2Client struct {
 	BackchannelLogoutURI string `json:"backchannel_logout_uri,omitempty"`
 	// RefreshTokenLifetime holds the value of the "refresh_token_lifetime" field.
 	RefreshTokenLifetime string `json:"refresh_token_lifetime,omitempty"`
+	// AllowedGroups holds the value of the "allowed_groups" field.
+	AllowedGroups []string `json:"allowed_groups,omitempty"`
 	// ClientCredentialsClaims holds the value of the "client_credentials_claims" field.
 	ClientCredentialsClaims *storage.ClientCredentialsClaims `json:"client_credentials_claims,omitempty"`
 	selectValues            sql.SelectValues
@@ -52,7 +54,7 @@ func (*OAuth2Client) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case oauth2client.FieldRedirectUris, oauth2client.FieldTrustedPeers, oauth2client.FieldAllowedConnectors, oauth2client.FieldMfaChain, oauth2client.FieldPostLogoutRedirectUris, oauth2client.FieldSSOSharedWith, oauth2client.FieldClientCredentialsClaims:
+		case oauth2client.FieldRedirectUris, oauth2client.FieldTrustedPeers, oauth2client.FieldAllowedConnectors, oauth2client.FieldMfaChain, oauth2client.FieldPostLogoutRedirectUris, oauth2client.FieldSSOSharedWith, oauth2client.FieldAllowedGroups, oauth2client.FieldClientCredentialsClaims:
 			values[i] = new([]byte)
 		case oauth2client.FieldPublic:
 			values[i] = new(sql.NullBool)
@@ -163,6 +165,14 @@ func (_m *OAuth2Client) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RefreshTokenLifetime = value.String
 			}
+		case oauth2client.FieldAllowedGroups:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field allowed_groups", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.AllowedGroups); err != nil {
+					return fmt.Errorf("unmarshal field allowed_groups: %w", err)
+				}
+			}
 		case oauth2client.FieldClientCredentialsClaims:
 			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field client_credentials_claims", values[i])
@@ -242,6 +252,9 @@ func (_m *OAuth2Client) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("refresh_token_lifetime=")
 	builder.WriteString(_m.RefreshTokenLifetime)
+	builder.WriteString(", ")
+	builder.WriteString("allowed_groups=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowedGroups))
 	builder.WriteString(", ")
 	builder.WriteString("client_credentials_claims=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ClientCredentialsClaims))

@@ -101,8 +101,10 @@ func TestFinalizeLoginCreatesUserIdentity(t *testing.T) {
 	_, err := s.connectors.Open(sc)
 	require.NoError(t, err)
 
+	require.NoError(t, s.storage.CreateClient(ctx, storage.Client{ID: "test-client"}))
 	authReq := storage.AuthRequest{
 		ID:            authReqID,
+		ClientID:      "test-client",
 		ConnectorID:   connID,
 		RedirectURI:   "cb",
 		Expiry:        expiry,
@@ -165,8 +167,10 @@ func TestFinalizeLoginUpdatesUserIdentity(t *testing.T) {
 		LastLogin: oldTime,
 	}))
 
+	require.NoError(t, s.storage.CreateClient(ctx, storage.Client{ID: "test-client"}))
 	authReq := storage.AuthRequest{
 		ID:            authReqID,
+		ClientID:      "test-client",
 		ConnectorID:   connID,
 		RedirectURI:   "cb",
 		Expiry:        expiry,
@@ -214,8 +218,10 @@ func TestFinalizeLoginSkipsUserIdentityWhenDisabled(t *testing.T) {
 	_, err := s.connectors.Open(sc)
 	require.NoError(t, err)
 
+	require.NoError(t, s.storage.CreateClient(ctx, storage.Client{ID: "test-client"}))
 	authReq := storage.AuthRequest{
 		ID:            authReqID,
+		ClientID:      "test-client",
 		ConnectorID:   connID,
 		RedirectURI:   "cb",
 		Expiry:        expiry,
@@ -336,6 +342,7 @@ func TestHandlePasswordLoginWithSkipApproval(t *testing.T) {
 		},
 	}
 
+	const testClientID = "test-client"
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			httpServer, s := newTestServer(t, func(c *Config) {
@@ -344,6 +351,9 @@ func TestHandlePasswordLoginWithSkipApproval(t *testing.T) {
 			})
 			defer httpServer.Close()
 
+			if err := s.storage.CreateClient(ctx, storage.Client{ID: testClientID}); err != nil {
+				t.Fatalf("create client: %v", err)
+			}
 			sc := storage.Connector{
 				ID:              connID,
 				Type:            "mockPassword",
@@ -357,6 +367,7 @@ func TestHandlePasswordLoginWithSkipApproval(t *testing.T) {
 			if _, err := s.connectors.Open(sc); err != nil {
 				t.Fatalf("open connector: %v", err)
 			}
+			tc.authReq.ClientID = testClientID
 			if err := s.storage.CreateAuthRequest(ctx, tc.authReq); err != nil {
 				t.Fatalf("failed to create AuthRequest: %v", err)
 			}
@@ -485,6 +496,7 @@ func TestHandleConnectorCallbackWithSkipApproval(t *testing.T) {
 		},
 	}
 
+	const testClientID = "test-client"
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			httpServer, s := newTestServer(t, func(c *Config) {
@@ -493,6 +505,10 @@ func TestHandleConnectorCallbackWithSkipApproval(t *testing.T) {
 			})
 			defer httpServer.Close()
 
+			if err := s.storage.CreateClient(ctx, storage.Client{ID: testClientID}); err != nil {
+				t.Fatalf("create client: %v", err)
+			}
+			tc.authReq.ClientID = testClientID
 			if err := s.storage.CreateAuthRequest(ctx, tc.authReq); err != nil {
 				t.Fatalf("failed to create AuthRequest: %v", err)
 			}
