@@ -507,6 +507,16 @@ func RefreshTokenLifetimeContainsFold(v string) predicate.OAuth2Client {
 	return predicate.OAuth2Client(sql.FieldContainsFold(FieldRefreshTokenLifetime, v))
 }
 
+// AllowedGroupsIsNil applies the IsNil predicate on the "allowed_groups" field.
+func AllowedGroupsIsNil() predicate.OAuth2Client {
+	return predicate.OAuth2Client(sql.FieldIsNull(FieldAllowedGroups))
+}
+
+// AllowedGroupsNotNil applies the NotNil predicate on the "allowed_groups" field.
+func AllowedGroupsNotNil() predicate.OAuth2Client {
+	return predicate.OAuth2Client(sql.FieldNotNull(FieldAllowedGroups))
+}
+
 // ClientCredentialsClaimsIsNil applies the IsNil predicate on the "client_credentials_claims" field.
 func ClientCredentialsClaimsIsNil() predicate.OAuth2Client {
 	return predicate.OAuth2Client(sql.FieldIsNull(FieldClientCredentialsClaims))

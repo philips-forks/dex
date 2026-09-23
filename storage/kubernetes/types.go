@@ -297,6 +297,8 @@ type Client struct {
 	BackchannelLogoutURI string `json:"backchannelLogoutURI,omitempty"`
 
 	RefreshTokenLifetime string `json:"refreshTokenLifetime,omitempty"`
+
+	AllowedGroups []string `json:"allowedGroups,omitempty"`
 }
 
 // ClientList is a list of Clients.
@@ -329,6 +331,7 @@ func (cli *client) fromStorageClient(c storage.Client) Client {
 		SSOSharedWith:          c.SSOSharedWith,
 		BackchannelLogoutURI:   c.BackchannelLogoutURI,
 		RefreshTokenLifetime:   c.RefreshTokenLifetime,
+		AllowedGroups:          c.AllowedGroups,
 	}
 }
 
@@ -347,6 +350,7 @@ func toStorageClient(c Client) storage.Client {
 		SSOSharedWith:          c.SSOSharedWith,
 		BackchannelLogoutURI:   c.BackchannelLogoutURI,
 		RefreshTokenLifetime:   c.RefreshTokenLifetime,
+		AllowedGroups:          c.AllowedGroups,
 	}
 }
 

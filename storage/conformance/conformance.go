@@ -322,6 +322,7 @@ func testClientCRUD(t *testing.T, s storage.Storage) {
 		Name:              "dex client",
 		LogoURL:           "https://goo.gl/JIyzIC",
 		AllowedConnectors: []string{"github", "google"},
+		AllowedGroups:     []string{"team-a", "team-b"},
 		// Explicitly persisted fields: at their zero values they round-trip even
 		// when a backend drops them.
 		BackchannelLogoutURI:   "https://auth.example.com/backchannel-logout",
@@ -387,6 +388,17 @@ func testClientCRUD(t *testing.T, s storage.Storage) {
 	}
 	c1.RefreshTokenLifetime = storage.RefreshTokenLifetimeStandalone
 	c1.BackchannelLogoutURI = "https://auth.example.com/logout-2"
+	getAndCompare(id1, c1)
+
+	// AllowedGroups round-trips like AllowedConnectors.
+	err = s.UpdateClient(ctx, id1, func(old storage.Client) (storage.Client, error) {
+		old.AllowedGroups = []string{"team-c"}
+		return old, nil
+	})
+	if err != nil {
+		t.Errorf("update client: %v", err)
+	}
+	c1.AllowedGroups = []string{"team-c"}
 	getAndCompare(id1, c1)
 
 	// Verify SSOSharedWith nil vs empty slice roundtrip.

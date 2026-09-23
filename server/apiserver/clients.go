@@ -29,6 +29,7 @@ func (d dexAPI) GetClient(ctx context.Context, req *api.GetClientReq) (*api.GetC
 			BackchannelLogoutUri:   c.BackchannelLogoutURI,
 			PostLogoutRedirectUris: c.PostLogoutRedirectURIs,
 			RefreshTokenLifetime:   c.RefreshTokenLifetime,
+			AllowedGroups:          c.AllowedGroups,
 		},
 	}, nil
 }
@@ -62,6 +63,7 @@ func (d dexAPI) CreateClient(ctx context.Context, req *api.CreateClientReq) (*ap
 		BackchannelLogoutURI:   req.Client.BackchannelLogoutUri,
 		PostLogoutRedirectURIs: req.Client.PostLogoutRedirectUris,
 		RefreshTokenLifetime:   req.Client.RefreshTokenLifetime,
+		AllowedGroups:          req.Client.AllowedGroups,
 	}
 	if err := d.s.CreateClient(ctx, c); err != nil {
 		if err == storage.ErrAlreadyExists {
@@ -114,6 +116,9 @@ func (d dexAPI) UpdateClient(ctx context.Context, req *api.UpdateClientReq) (*ap
 		if req.RefreshTokenLifetime != nil {
 			old.RefreshTokenLifetime = req.GetRefreshTokenLifetime()
 		}
+		if req.AllowedGroups != nil {
+			old.AllowedGroups = req.AllowedGroups
+		}
 		return old, nil
 	})
 	if err != nil {
@@ -159,6 +164,7 @@ func (d dexAPI) ListClients(ctx context.Context, req *api.ListClientReq) (*api.L
 			BackchannelLogoutUri:   client.BackchannelLogoutURI,
 			PostLogoutRedirectUris: client.PostLogoutRedirectURIs,
 			RefreshTokenLifetime:   client.RefreshTokenLifetime,
+			AllowedGroups:          client.AllowedGroups,
 		}
 		clients = append(clients, &c)
 	}
