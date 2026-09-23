@@ -5,7 +5,25 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/philips-software/go-dip-api/iam"
 )
+
+// orgRoleGroups returns a group identifier (formatted "urn:iamr:<org>:<role>")
+// for each of the user's IAM organization role assignments. Shared between
+// ExtendPayload (which injects them into the roles/groups token claims) and
+// createIdentity (which needs them available on connector.Identity.Groups
+// before any group-based authorization decision is made, e.g. a client's
+// AllowedGroups check).
+func orgRoleGroups(introspect iam.IntrospectResponse) []string {
+	var roles []string
+	for _, org := range introspect.Organizations.OrganizationList {
+		for _, role := range org.Roles {
+			roles = append(roles, fmt.Sprintf("urn:iamr:%s:%s", org.OrganizationID, strings.ToLower(role)))
+		}
+	}
+	return roles
+}
 
 func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []byte) ([]byte, error) {
 	var cd ConnectorData
@@ -41,11 +59,8 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 	// Rewrite subject
 	var orgSubs []string
 	var orgGroups []string
-	var orgRoles []string
+	orgRoles := orgRoleGroups(cd.Introspect)
 	for _, org := range cd.Introspect.Organizations.OrganizationList {
-		for _, role := range org.Roles {
-			orgRoles = append(orgRoles, fmt.Sprintf("urn:iamr:%s:%s", org.OrganizationID, strings.ToLower(role)))
-		}
 		for _, group := range org.Groups {
 			orgGroups = append(orgGroups, fmt.Sprintf("urn:iamg:%s:%s", org.OrganizationID, strings.ToLower(group)))
 		}

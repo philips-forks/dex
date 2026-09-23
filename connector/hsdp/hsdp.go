@@ -503,6 +503,13 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 		Email:             email,
 		EmailVerified:     emailVerified,
 	}
+	// Populate Groups from the same IAM role data ExtendPayload later injects
+	// into the roles/groups token claims, so it's available to any group-based
+	// authorization decision (e.g. a client's AllowedGroups check) made before
+	// ExtendPayload runs at token-minting time.
+	if c.enableRoleClaim {
+		identity.Groups = orgRoleGroups(*introspectResponse)
+	}
 
 	// Attach connector data
 	connData, err := json.Marshal(&cd)
