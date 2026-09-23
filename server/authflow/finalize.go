@@ -8,12 +8,31 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/dexidp/dex/connector"
+	"github.com/dexidp/dex/pkg/groups"
 	"github.com/dexidp/dex/server/tokens"
 	"github.com/dexidp/dex/storage"
 )
+
+// scopesForConnector returns the connector.Scopes to use for a connector call
+// (login redirect, callback, or password Login) for this AuthRequest. When the
+// client has AllowedGroups, it forces the "groups" scope on so the connector
+// fetches identity.Groups for finalizeLogin's server-side check, without adding
+// "groups" to authReq.Scopes itself — so the issued token still omits the
+// groups claim unless the client actually requested that scope.
+func (h *Handler) scopesForConnector(ctx context.Context, authReq storage.AuthRequest) connector.Scopes {
+	client, err := h.Storage.GetClient(ctx, authReq.ClientID)
+	if err != nil || len(client.AllowedGroups) == 0 {
+		return tokens.ParseScopes(authReq.Scopes)
+	}
+	if slices.Contains(authReq.Scopes, tokens.ScopeGroups) {
+		return tokens.ParseScopes(authReq.Scopes)
+	}
+	return tokens.ParseScopes(append(slices.Clone(authReq.Scopes), tokens.ScopeGroups))
+}
 
 // finalizeLogin associates the user's identity with the current AuthRequest, then returns
 // the approval page's path.
@@ -32,6 +51,20 @@ func (h *Handler) finalizeLogin(ctx context.Context, identity connector.Identity
 			}
 		case !errors.Is(err, storage.ErrNotFound):
 			return storage.AuthRequest{}, fmt.Errorf("failed to look up user identity: %w", err)
+		}
+	}
+
+	// Per-client group restriction: only users in the client's AllowedGroups may
+	// complete SSO for it. One connector can serve many clients, each with its
+	// own required groups, on top of any connector-level allowedGroups check
+	// the connector itself already applied.
+	client, err := h.Storage.GetClient(ctx, authReq.ClientID)
+	if err != nil {
+		return storage.AuthRequest{}, fmt.Errorf("failed to get client: %w", err)
+	}
+	if len(client.AllowedGroups) > 0 {
+		if matched := groups.Filter(identity.Groups, client.AllowedGroups); len(matched) == 0 {
+			return storage.AuthRequest{}, &connector.UserNotInRequiredGroupsError{UserID: identity.UserID, Groups: client.AllowedGroups}
 		}
 	}
 

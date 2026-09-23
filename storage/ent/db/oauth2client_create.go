@@ -108,6 +108,12 @@ func (_c *OAuth2ClientCreate) SetNillableRefreshTokenLifetime(v *string) *OAuth2
 	return _c
 }
 
+// SetAllowedGroups sets the "allowed_groups" field.
+func (_c *OAuth2ClientCreate) SetAllowedGroups(v []string) *OAuth2ClientCreate {
+	_c.mutation.SetAllowedGroups(v)
+	return _c
+}
+
 // SetClientCredentialsClaims sets the "client_credentials_claims" field.
 func (_c *OAuth2ClientCreate) SetClientCredentialsClaims(v *storage.ClientCredentialsClaims) *OAuth2ClientCreate {
 	_c.mutation.SetClientCredentialsClaims(v)
@@ -281,6 +287,10 @@ func (_c *OAuth2ClientCreate) createSpec() (*OAuth2Client, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.RefreshTokenLifetime(); ok {
 		_spec.SetField(oauth2client.FieldRefreshTokenLifetime, field.TypeString, value)
 		_node.RefreshTokenLifetime = value
+	}
+	if value, ok := _c.mutation.AllowedGroups(); ok {
+		_spec.SetField(oauth2client.FieldAllowedGroups, field.TypeJSON, value)
+		_node.AllowedGroups = value
 	}
 	if value, ok := _c.mutation.ClientCredentialsClaims(); ok {
 		_spec.SetField(oauth2client.FieldClientCredentialsClaims, field.TypeJSON, value)

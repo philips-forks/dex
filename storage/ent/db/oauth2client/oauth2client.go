@@ -35,6 +35,8 @@ const (
 	FieldBackchannelLogoutURI = "backchannel_logout_uri"
 	// FieldRefreshTokenLifetime holds the string denoting the refresh_token_lifetime field in the database.
 	FieldRefreshTokenLifetime = "refresh_token_lifetime"
+	// FieldAllowedGroups holds the string denoting the allowed_groups field in the database.
+	FieldAllowedGroups = "allowed_groups"
 	// FieldClientCredentialsClaims holds the string denoting the client_credentials_claims field in the database.
 	FieldClientCredentialsClaims = "client_credentials_claims"
 	// Table holds the table name of the oauth2client in the database.
@@ -56,6 +58,7 @@ var Columns = []string{
 	FieldSSOSharedWith,
 	FieldBackchannelLogoutURI,
 	FieldRefreshTokenLifetime,
+	FieldAllowedGroups,
 	FieldClientCredentialsClaims,
 }
 

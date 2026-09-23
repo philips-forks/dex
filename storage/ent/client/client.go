@@ -21,7 +21,8 @@ func (d *Database) CreateClient(ctx context.Context, client storage.Client) erro
 		SetPostLogoutRedirectUris(client.PostLogoutRedirectURIs).
 		SetSSOSharedWith(client.SSOSharedWith).
 		SetBackchannelLogoutURI(client.BackchannelLogoutURI).
-		SetRefreshTokenLifetime(client.RefreshTokenLifetime)
+		SetRefreshTokenLifetime(client.RefreshTokenLifetime).
+		SetAllowedGroups(client.AllowedGroups)
 	if client.ClientCredentialsClaims != nil {
 		create = create.SetClientCredentialsClaims(client.ClientCredentialsClaims)
 	}
@@ -93,7 +94,8 @@ func (d *Database) UpdateClient(ctx context.Context, id string, updater func(old
 		SetPostLogoutRedirectUris(newClient.PostLogoutRedirectURIs).
 		SetSSOSharedWith(newClient.SSOSharedWith).
 		SetBackchannelLogoutURI(newClient.BackchannelLogoutURI).
-		SetRefreshTokenLifetime(newClient.RefreshTokenLifetime)
+		SetRefreshTokenLifetime(newClient.RefreshTokenLifetime).
+		SetAllowedGroups(newClient.AllowedGroups)
 	if newClient.ClientCredentialsClaims != nil {
 		update = update.SetClientCredentialsClaims(newClient.ClientCredentialsClaims)
 	} else {
