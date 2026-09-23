@@ -28,6 +28,7 @@ func TestFinalizeLoginBlockedAccount(t *testing.T) {
 		Expiry:      time.Now().Add(time.Hour),
 		ConnectorID: "mock",
 	}
+	require.NoError(t, server.Storage.CreateClient(ctx, storage.Client{ID: "example-app"}))
 	require.NoError(t, server.Storage.CreateAuthRequest(ctx, authReq))
 	require.NoError(t, server.Storage.CreateUserIdentity(ctx, storage.UserIdentity{
 		UserID:              "user-1",

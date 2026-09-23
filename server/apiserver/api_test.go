@@ -436,6 +436,76 @@ func TestUpdateClient(t *testing.T) {
 	}
 }
 
+// TestClientAllowedGroups verifies that a client's AllowedGroups round-trips through
+// CreateClient, GetClient, ListClients and UpdateClient.
+func TestClientAllowedGroups(t *testing.T) {
+	logger := newLogger(t)
+	s := memory.New(logger)
+
+	client := newAPI(t, s, logger)
+	defer client.Close()
+
+	ctx := t.Context()
+
+	createResp, err := client.CreateClient(ctx, &api.CreateClientReq{
+		Client: &api.Client{
+			Id:            "allowed-groups-client",
+			Secret:        "secret",
+			RedirectUris:  []string{"http://localhost/callback"},
+			Name:          "Test",
+			AllowedGroups: []string{"team-a", "team-b"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateClient: %v", err)
+	}
+	if createResp.AlreadyExists {
+		t.Fatal("expected new client, got AlreadyExists")
+	}
+	if !slices.Equal(createResp.Client.AllowedGroups, []string{"team-a", "team-b"}) {
+		t.Errorf("CreateClient response AllowedGroups: got %v, want [team-a team-b]", createResp.Client.AllowedGroups)
+	}
+
+	getResp, err := client.GetClient(ctx, &api.GetClientReq{Id: "allowed-groups-client"})
+	if err != nil {
+		t.Fatalf("GetClient: %v", err)
+	}
+	if !slices.Equal(getResp.Client.AllowedGroups, []string{"team-a", "team-b"}) {
+		t.Errorf("GetClient AllowedGroups: got %v, want [team-a team-b]", getResp.Client.AllowedGroups)
+	}
+
+	listResp, err := client.ListClients(ctx, &api.ListClientReq{})
+	if err != nil {
+		t.Fatalf("ListClients: %v", err)
+	}
+	var found bool
+	for _, c := range listResp.Clients {
+		if c.Id == "allowed-groups-client" {
+			found = true
+			if !slices.Equal(c.AllowedGroups, []string{"team-a", "team-b"}) {
+				t.Errorf("ListClients AllowedGroups: got %v, want [team-a team-b]", c.AllowedGroups)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("allowed-groups-client not found in ListClients")
+	}
+
+	if _, err := client.UpdateClient(ctx, &api.UpdateClientReq{
+		Id:            "allowed-groups-client",
+		AllowedGroups: []string{"team-c"},
+	}); err != nil {
+		t.Fatalf("UpdateClient: %v", err)
+	}
+	getResp, err = client.GetClient(ctx, &api.GetClientReq{Id: "allowed-groups-client"})
+	if err != nil {
+		t.Fatalf("GetClient after update: %v", err)
+	}
+	if !slices.Equal(getResp.Client.AllowedGroups, []string{"team-c"}) {
+		t.Errorf("GetClient AllowedGroups after update: got %v, want [team-c]", getResp.Client.AllowedGroups)
+	}
+}
+
 func TestCreateConnector(t *testing.T) {
 	t.Setenv("DEX_API_CONNECTORS_CRUD", "true")
 
