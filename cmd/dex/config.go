@@ -254,6 +254,8 @@ type OAuth2 struct {
 	PKCE PKCE `json:"pkce"`
 	// DCR configuration
 	DCR DCR `json:"dcr"`
+	// List of additional scope prefixes to allow
+	AllowedScopePrefixes []string `json:"allowedScopePrefixes"`
 }
 
 // DCR holds the configuration for OAuth2 Dynamic Client Registration.
