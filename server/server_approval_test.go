@@ -87,6 +87,8 @@ func TestSkipApprovalWithExistingConsent(t *testing.T) {
 			})
 			defer httpServer.Close()
 
+			require.NoError(t, s.storage.CreateClient(ctx, storage.Client{ID: tc.clientID}))
+
 			// Pre-create UserIdentity with consents
 			require.NoError(t, s.storage.CreateUserIdentity(ctx, storage.UserIdentity{
 				UserID:      "0-385-28089-0",

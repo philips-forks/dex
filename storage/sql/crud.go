@@ -549,9 +549,10 @@ func (c *conn) UpdateClient(ctx context.Context, id string, updater func(old sto
 				post_logout_redirect_uris = $9,
 				sso_shared_with = $10,
 				backchannel_logout_uri = $11,
-				refresh_token_lifetime = $12
-			where id = $13;
-		`, nc.Secret, encoder(nc.RedirectURIs), encoder(nc.TrustedPeers), nc.Public, nc.Name, nc.LogoURL, encoder(nc.AllowedConnectors), encoder(nc.MFAChain), encoder(nc.PostLogoutRedirectURIs), encoder(nc.SSOSharedWith), nc.BackchannelLogoutURI, nc.RefreshTokenLifetime, id,
+				refresh_token_lifetime = $12,
+				allowed_groups = $13
+			where id = $14;
+		`, nc.Secret, encoder(nc.RedirectURIs), encoder(nc.TrustedPeers), nc.Public, nc.Name, nc.LogoURL, encoder(nc.AllowedConnectors), encoder(nc.MFAChain), encoder(nc.PostLogoutRedirectURIs), encoder(nc.SSOSharedWith), nc.BackchannelLogoutURI, nc.RefreshTokenLifetime, encoder(nc.AllowedGroups), id,
 		)
 		if err != nil {
 			return fmt.Errorf("update client: %v", err)
@@ -563,12 +564,12 @@ func (c *conn) UpdateClient(ctx context.Context, id string, updater func(old sto
 func (c *conn) CreateClient(ctx context.Context, cli storage.Client) error {
 	_, err := c.Exec(`
 		insert into client (
-			id, secret, redirect_uris, trusted_peers, public, name, logo_url, allowed_connectors, mfa_chain, post_logout_redirect_uris, sso_shared_with, backchannel_logout_uri, refresh_token_lifetime
+			id, secret, redirect_uris, trusted_peers, public, name, logo_url, allowed_connectors, mfa_chain, post_logout_redirect_uris, sso_shared_with, backchannel_logout_uri, refresh_token_lifetime, allowed_groups
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
 	`,
 		cli.ID, cli.Secret, encoder(cli.RedirectURIs), encoder(cli.TrustedPeers),
-		cli.Public, cli.Name, cli.LogoURL, encoder(cli.AllowedConnectors), encoder(cli.MFAChain), encoder(cli.PostLogoutRedirectURIs), encoder(cli.SSOSharedWith), cli.BackchannelLogoutURI, cli.RefreshTokenLifetime,
+		cli.Public, cli.Name, cli.LogoURL, encoder(cli.AllowedConnectors), encoder(cli.MFAChain), encoder(cli.PostLogoutRedirectURIs), encoder(cli.SSOSharedWith), cli.BackchannelLogoutURI, cli.RefreshTokenLifetime, encoder(cli.AllowedGroups),
 	)
 	if err != nil {
 		if c.alreadyExistsCheck(err) {
@@ -582,7 +583,7 @@ func (c *conn) CreateClient(ctx context.Context, cli storage.Client) error {
 func getClient(ctx context.Context, q querier, id string) (storage.Client, error) {
 	return scanClient(q.QueryRow(`
 		select
-			id, secret, redirect_uris, trusted_peers, public, name, logo_url, allowed_connectors, mfa_chain, post_logout_redirect_uris, sso_shared_with, backchannel_logout_uri, refresh_token_lifetime
+			id, secret, redirect_uris, trusted_peers, public, name, logo_url, allowed_connectors, mfa_chain, post_logout_redirect_uris, sso_shared_with, backchannel_logout_uri, refresh_token_lifetime, allowed_groups
 	    from client where id = $1;
 	`, id))
 }
@@ -594,7 +595,7 @@ func (c *conn) GetClient(ctx context.Context, id string) (storage.Client, error)
 func (c *conn) ListClients(ctx context.Context) ([]storage.Client, error) {
 	rows, err := c.Query(`
 		select
-			id, secret, redirect_uris, trusted_peers, public, name, logo_url, allowed_connectors, mfa_chain, post_logout_redirect_uris, sso_shared_with, backchannel_logout_uri, refresh_token_lifetime
+			id, secret, redirect_uris, trusted_peers, public, name, logo_url, allowed_connectors, mfa_chain, post_logout_redirect_uris, sso_shared_with, backchannel_logout_uri, refresh_token_lifetime, allowed_groups
 		from client;
 	`)
 	if err != nil {
@@ -621,9 +622,10 @@ func scanClient(s scanner) (cli storage.Client, err error) {
 	var mfaChain []byte
 	var postLogoutRedirectURIs []byte
 	var ssoSharedWith []byte
+	var allowedGroups []byte
 	err = s.Scan(
 		&cli.ID, &cli.Secret, decoder(&cli.RedirectURIs), decoder(&cli.TrustedPeers),
-		&cli.Public, &cli.Name, &cli.LogoURL, &allowedConnectors, &mfaChain, &postLogoutRedirectURIs, &ssoSharedWith, &cli.BackchannelLogoutURI, &cli.RefreshTokenLifetime,
+		&cli.Public, &cli.Name, &cli.LogoURL, &allowedConnectors, &mfaChain, &postLogoutRedirectURIs, &ssoSharedWith, &cli.BackchannelLogoutURI, &cli.RefreshTokenLifetime, &allowedGroups,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -649,6 +651,11 @@ func scanClient(s scanner) (cli storage.Client, err error) {
 	if len(ssoSharedWith) > 0 {
 		if err := json.Unmarshal(ssoSharedWith, &cli.SSOSharedWith); err != nil {
 			return cli, fmt.Errorf("unmarshal client sso shared with: %v", err)
+		}
+	}
+	if len(allowedGroups) > 0 {
+		if err := json.Unmarshal(allowedGroups, &cli.AllowedGroups); err != nil {
+			return cli, fmt.Errorf("unmarshal client allowed groups: %v", err)
 		}
 	}
 	return cli, nil
