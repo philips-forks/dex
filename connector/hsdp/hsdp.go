@@ -37,6 +37,11 @@ type Config struct {
 	RoleAsGroupClaim bool      `json:"roleAsGroupClaim"`
 	StateViaCookie   bool      `json:"stateViaCookie"`
 
+	// IDPHint is sent as kc_idp_hint on the OAuth2 authorization request, so
+	// HSP IAM redirects straight to that federated identity provider (e.g. the
+	// philips.com SSO) instead of showing its own login page.
+	IDPHint string `json:"idpHint"`
+
 	// Extensions implemented by HSP IAM
 	Extension
 
@@ -180,6 +185,7 @@ func (c *Config) Open(id string, logger *slog.Logger) (conn connector.Connector,
 		enableRoleClaim:           c.EnableRoleClaim,
 		roleAsGroupClaim:          c.RoleAsGroupClaim,
 		stateViaCookie:            c.StateViaCookie,
+		idpHint:                   c.IDPHint,
 	}, nil
 }
 
@@ -217,6 +223,7 @@ type HSDPConnector struct {
 	promptType                string
 	tenantMap                 TenantMap
 	stateViaCookie            bool
+	idpHint                   string
 }
 
 func (c *HSDPConnector) StateViaCookie() bool {
@@ -265,6 +272,10 @@ func (c *HSDPConnector) LoginURL(s connector.Scopes, callbackURL, state string) 
 
 	if s.OfflineAccess {
 		opts = append(opts, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", c.promptType))
+	}
+
+	if c.idpHint != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("kc_idp_hint", c.idpHint))
 	}
 
 	codeVerifier := oauth2.GenerateVerifier()

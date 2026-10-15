@@ -240,6 +240,61 @@ func TestLoginURL_PKCE(t *testing.T) {
 	}
 }
 
+func TestLoginURL_IDPHint(t *testing.T) {
+	testServer, iamServer, idmServer, err := setupServers(map[string]interface{}{})
+	if err != nil {
+		t.Fatal("failed to setup test server", err)
+	}
+	defer testServer.Close()
+	defer iamServer.Close()
+	defer idmServer.Close()
+
+	for _, tc := range []struct {
+		name    string
+		idpHint string
+	}{
+		{name: "set", idpHint: "sp-philips-hspiam-euwest_idpAlias"},
+		{name: "unset", idpHint: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := hsdp.Config{
+				Issuer:      testServer.URL,
+				ClientID:    "clientID",
+				IAMURL:      iamServer.URL,
+				IDMURL:      idmServer.URL,
+				RedirectURI: fmt.Sprintf("%s/callback", testServer.URL),
+				IDPHint:     tc.idpHint,
+			}
+
+			conn, err := newConnector(config)
+			if err != nil {
+				t.Fatal("failed to create connector", err)
+			}
+
+			loginURL, _, err := conn.LoginURL(connector.Scopes{}, config.RedirectURI, "state")
+			if err != nil {
+				t.Fatal("failed to create login URL", err)
+			}
+
+			u, err := url.Parse(loginURL)
+			if err != nil {
+				t.Fatal("failed to parse login URL", err)
+			}
+
+			got, present := u.Query()["kc_idp_hint"]
+			if tc.idpHint == "" {
+				if present {
+					t.Errorf("expected no kc_idp_hint, got %q", got)
+				}
+				return
+			}
+			if u.Query().Get("kc_idp_hint") != tc.idpHint {
+				t.Errorf("expected kc_idp_hint %q, got %q", tc.idpHint, got)
+			}
+		})
+	}
+}
+
 func TestHandleCallback_MissingPKCEData(t *testing.T) {
 	testServer, iamServer, idmServer, err := setupServers(map[string]interface{}{})
 	if err != nil {
