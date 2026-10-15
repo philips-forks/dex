@@ -207,6 +207,8 @@ type Client struct {
 	// one of these IdP groups. Empty means no restriction. Unlike a connector's own
 	// allowedGroups (OIDC/SAML/OpenShift config), this is per client, so multiple
 	// clients sharing one connector can each require different groups.
+	// Entries may be path.Match glob patterns (e.g. "urn:iamr:*" admits every
+	// HSP IAM role group); note "*" does not match "/".
 	AllowedGroups []string `json:"allowedGroups,omitempty"`
 
 	// MFAChain is an ordered list of MFA authenticator IDs that a user must complete

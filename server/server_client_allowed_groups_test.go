@@ -85,6 +85,52 @@ func TestClientAllowedGroups_CallbackDeny(t *testing.T) {
 	require.False(t, updated.LoggedIn, "rejected login must not be marked logged in")
 }
 
+func TestClientAllowedGroups_CallbackWildcard(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		allowed   []string
+		wantAllow bool
+	}{
+		{name: "matching wildcard allows", allowed: []string{"auth*"}, wantAllow: true},
+		{name: "non-matching wildcard denies", allowed: []string{"urn:iamr:*"}, wantAllow: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			connID := "mock"
+			authReqID := "test"
+			expiry := time.Now().Add(100 * time.Second)
+
+			httpServer, s := newTestServer(t, func(c *Config) { c.Now = time.Now })
+			defer httpServer.Close()
+
+			require.NoError(t, s.storage.CreateClient(ctx, storage.Client{
+				ID:            "client-wildcard",
+				RedirectURIs:  []string{"cb"},
+				AllowedGroups: tc.allowed,
+			}))
+			require.NoError(t, s.storage.CreateAuthRequest(ctx, storage.AuthRequest{
+				ID:            authReqID,
+				ClientID:      "client-wildcard",
+				ConnectorID:   connID,
+				RedirectURI:   "cb",
+				Expiry:        expiry,
+				ResponseTypes: []string{oauth2.ResponseTypeCode},
+			}))
+
+			rr := httptest.NewRecorder()
+			path := fmt.Sprintf("/callback/%s?state=%s", connID, authReqID)
+			s.ServeHTTP(rr, httptest.NewRequest("GET", path, nil))
+			if !tc.wantAllow {
+				require.Equal(t, http.StatusForbidden, rr.Code, "user matching no allowed pattern must be rejected")
+				return
+			}
+			require.Equal(t, 303, rr.Code)
+			_, restPath := followFlow(t, s, rr)
+			require.Equal(t, "/cb", restPath, "user matching an allowed pattern should complete SSO")
+		})
+	}
+}
+
 func TestClientAllowedGroups_NoRestrictionAllowsLogin(t *testing.T) {
 	ctx := t.Context()
 	connID := "mock"

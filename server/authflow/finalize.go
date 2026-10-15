@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/dexidp/dex/connector"
-	"github.com/dexidp/dex/pkg/groups"
 	"github.com/dexidp/dex/server/tokens"
 	"github.com/dexidp/dex/storage"
 )
@@ -63,7 +62,7 @@ func (h *Handler) finalizeLogin(ctx context.Context, identity connector.Identity
 		return storage.AuthRequest{}, fmt.Errorf("failed to get client: %w", err)
 	}
 	if len(client.AllowedGroups) > 0 {
-		if matched := groups.Filter(identity.Groups, client.AllowedGroups); len(matched) == 0 {
+		if !inAllowedGroups(identity.Groups, client.AllowedGroups) {
 			return storage.AuthRequest{}, &connector.UserNotInRequiredGroupsError{UserID: identity.UserID, Groups: client.AllowedGroups}
 		}
 	}
