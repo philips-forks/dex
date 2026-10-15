@@ -61,3 +61,4 @@ The following fields are supported:
 | getUserInfo    | bool        | Wether to inject complete userInfo as a claim in the JWT Token             |
 | userNameKey    | string      | The username key. Should be set to `sub`                                   |
 | scopes         | string      | The scopes to send to HSP IAM                                              |
+| idpHint        | string      | Sent as `kc_idp_hint` so IAM skips its login page and goes straight to that IdP (e.g. `sp-philips-hspiam-euwest_idpAlias` for philips.com SSO on eu-west) |
