@@ -61,4 +61,55 @@ The following fields are supported:
 | getUserInfo    | bool        | Wether to inject complete userInfo as a claim in the JWT Token             |
 | userNameKey    | string      | The username key. Should be set to `sub`                                   |
 | scopes         | string      | The scopes to send to HSP IAM                                              |
-| idpHint        | string      | Sent as `kc_idp_hint` so IAM skips its login page and goes straight to that IdP (e.g. `sp-philips-hspiam-euwest_idpAlias` for philips.com SSO on eu-west) |
+| idpHint        | string      | IAM identity provider alias sent as `kc_idp_hint`, skipping the IAM login page (see below) |
+
+## Skipping the HSP IAM login page (`idpHint`)
+
+By default an OAuth2 login lands on the HSP IAM login page, where users can
+either sign in with an IAM username/password or enter their domain under
+"Continue with SSO". To always use one federated identity provider (e.g. the
+philips.com Entra ID SSO, "Philips CODE1"), set `idpHint`. The connector sends
+it as the `kc_idp_hint` parameter on the authorization request, and IAM
+redirects straight to that identity provider without showing its own page.
+
+```yaml
+  connectors:
+    - type: hsdp
+      id: code1
+      name: Philips CODE1
+      config:
+        issuer: 'https://iam-service.eu-west.philips-healthsuite.com/authorize/oauth2/v2'
+        insecureIssuer: 'https://auth.eu1.iam.hsp.philips.com/realms/healthsuite'
+        clientID: publicdipservices   # public client: no clientSecret, PKCE only
+        redirectURI: https://dex.example.com/callback
+        iamURL: 'https://iam-service.eu-west.philips-healthsuite.com'
+        idmURL: 'https://idm-service.eu-west.philips-healthsuite.com'
+        scopes:
+          - auth_iam_introspect
+          - auth_iam_organization
+          - profile
+          - email
+        idpHint: sp-philips-hspiam-euwest_idpAlias
+        enableRoleClaim: true
+        roleAsGroupClaim: true
+```
+
+Notes:
+
+- **Finding the alias**: the value is IAM's identity provider alias, not a
+  domain. Submit the "Continue with SSO" form on the IAM login page with your
+  domain (e.g. `philips.com`); IAM redirects to
+  `.../realms/healthsuite/broker/<alias>/login`, and `<alias>` is the value to
+  use. For philips.com on eu-west production it is
+  `sp-philips-hspiam-euwest_idpAlias`.
+- **`idpHint` vs `saml2LoginURL`**: on the current (Keycloak-based) HSP IAM,
+  the `saml2/login` URL just redirects to the OAuth2 authorize endpoint with
+  `kc_idp_hint=<client_id>_idpAlias`, under that SAML service provider's own
+  client. That means the Dex callback must be registered on the SP's client and
+  the code is issued to it, not to your OAuth2 client, so it does not work for
+  a regular Dex connector client. `idpHint` uses the same mechanism but keeps
+  the normal OAuth2 + PKCE flow under your own `clientID`.
+- `idpHint` only affects the OAuth2 authorization code flow; it is ignored
+  when `saml2LoginURL` is set.
+- If the alias is unknown to IAM, the authorize request fails with an error
+  page instead of falling back to the IAM login page.
