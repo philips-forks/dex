@@ -143,6 +143,10 @@ web:
 #   # dcr:
 #     # enable: false
 #     # secret: "a-secure-random-32-byte-secret-key"
+#
+#   # List of additional scope prefixes to accept as recognized (non-standard,
+#   # non-cross-client) scopes.
+#   allowedScopePrefixes: ["urn:example:"]
 
 # Static clients registered in Dex by default.
 #
