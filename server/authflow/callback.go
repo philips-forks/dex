@@ -15,23 +15,45 @@ import (
 	"github.com/dexidp/dex/storage"
 )
 
+// hsdpStateCookie carries the auth request ID for connectors whose upstream
+// redirect drops the "state"/"RelayState" parameter (see StateViaCookie).
+const hsdpStateCookie = "hsdp_state"
+
 func (h *Handler) handleConnectorCallback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var authID string
 	switch r.Method {
 	case http.MethodGet: // OAuth2 callback
 		if authID = r.URL.Query().Get("state"); authID == "" {
-			h.renderError(r, w, http.StatusBadRequest, "User session error.")
-			return
+			if cookie, err := r.Cookie(hsdpStateCookie); err == nil && cookie.Value != "" {
+				authID = cookie.Value
+			} else {
+				h.renderError(r, w, http.StatusBadRequest, "User session error.")
+				return
+			}
 		}
 	case http.MethodPost: // SAML POST binding
 		if authID = r.PostFormValue("RelayState"); authID == "" {
-			h.renderError(r, w, http.StatusBadRequest, "User session error.")
-			return
+			if cookie, err := r.Cookie(hsdpStateCookie); err == nil && cookie.Value != "" {
+				authID = cookie.Value
+			} else {
+				h.renderError(r, w, http.StatusBadRequest, "User session error.")
+				return
+			}
 		}
 	default:
 		h.renderError(r, w, http.StatusBadRequest, "Method not supported")
 		return
+	}
+
+	if cookie, err := r.Cookie(hsdpStateCookie); err == nil && cookie.Value != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     hsdpStateCookie,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+		})
 	}
 
 	authReq, err := h.Storage.GetAuthRequest(ctx, authID)
