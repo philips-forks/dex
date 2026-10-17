@@ -25,6 +25,18 @@ func orgRoleGroups(introspect iam.IntrospectResponse) []string {
 	return roles
 }
 
+// mergeGroups returns groups with each of extra appended, skipping empty
+// strings and anything already present.
+func mergeGroups(groups, extra []string) []string {
+	merged := slices.Clone(groups)
+	for _, g := range extra {
+		if g != "" && !slices.Contains(merged, g) {
+			merged = append(merged, g)
+		}
+	}
+	return merged
+}
+
 func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []byte) ([]byte, error) {
 	var cd ConnectorData
 	var originalClaims map[string]interface{}
@@ -74,6 +86,20 @@ func (c *HSDPConnector) ExtendPayload(scopes []string, payload []byte, cdata []b
 	if c.enableRoleClaim && c.roleAsGroupClaim && len(orgRoles) > 0 {
 		originalClaims["groups"] = orgRoles
 		delete(originalClaims, "roles")
+	}
+	if len(c.addGroups) > 0 {
+		var groups []string
+		switch existing := originalClaims["groups"].(type) {
+		case []string:
+			groups = existing
+		case []interface{}:
+			for _, g := range existing {
+				if s, ok := g.(string); ok {
+					groups = append(groups, s)
+				}
+			}
+		}
+		originalClaims["groups"] = mergeGroups(groups, c.addGroups)
 	}
 
 	// Rewrite name

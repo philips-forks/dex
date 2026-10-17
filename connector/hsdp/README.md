@@ -62,6 +62,7 @@ The following fields are supported:
 | userNameKey    | string      | The username key. Should be set to `sub`                                   |
 | scopes         | string      | The scopes to send to HSP IAM                                              |
 | idpHint        | string      | IAM identity provider alias sent as `kc_idp_hint`, skipping the IAM login page (see below) |
+| addGroups      | []string    | Groups always added to every user's groups, e.g. to identify users of this connector (see below) |
 
 ## Skipping the HSP IAM login page (`idpHint`)
 
@@ -113,3 +114,29 @@ Notes:
   when `saml2LoginURL` is set.
 - If the alias is unknown to IAM, the authorize request fails with an error
   page instead of falling back to the IAM login page.
+
+## Tagging users of this connector (`addGroups`)
+
+`addGroups` adds a fixed list of groups to every user who logs in through this
+connector. Use it when downstream apps need to tell which connector (and so
+which customer or IAM deployment) a user came from, using only the `groups`
+claim:
+
+```yaml
+connectors:
+  - type: hsdp
+    id: hsdp-customer-a
+    name: Customer A
+    config:
+      # ...
+      addGroups:
+        - customer:customer-a
+```
+
+- The groups are added to the user's Dex identity at login, refresh and token
+  exchange, so per-client `allowedGroups` checks can match on them.
+- They are always in the token's `groups` claim, merged with whatever
+  `enableGroupClaim`, `enableRoleClaim`/`roleAsGroupClaim` produce, even when
+  the client did not request the `groups` scope.
+- Empty entries and duplicates are dropped.
+
