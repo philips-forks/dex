@@ -63,6 +63,8 @@ func (OAuth2Client) Fields() []ent.Field {
 			SchemaType(textSchema).
 			Default("").
 			Optional(),
+		field.JSON("allowed_groups", []string{}).
+			Optional(),
 		field.JSON("client_credentials_claims", &storage.ClientCredentialsClaims{}).
 			Optional(),
 	}

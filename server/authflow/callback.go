@@ -11,7 +11,6 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/dexidp/dex/connector"
-	"github.com/dexidp/dex/server/tokens"
 	"github.com/dexidp/dex/storage"
 )
 
@@ -94,14 +93,14 @@ func (h *Handler) handleConnectorCallback(w http.ResponseWriter, r *http.Request
 			h.renderError(r, w, http.StatusBadRequest, "Invalid request")
 			return
 		}
-		identity, err = conn.HandleCallback(tokens.ParseScopes(authReq.Scopes), authReq.ConnectorData, r)
+		identity, err = conn.HandleCallback(h.scopesForConnector(ctx, authReq), authReq.ConnectorData, r)
 	case connector.SAMLConnector:
 		if r.Method != http.MethodPost {
 			h.Logger.ErrorContext(r.Context(), "OAuth2 request mapped to SAML connector")
 			h.renderError(r, w, http.StatusBadRequest, "Invalid request")
 			return
 		}
-		identity, err = conn.HandlePOST(tokens.ParseScopes(authReq.Scopes), r.PostFormValue("SAMLResponse"), authReq.ID)
+		identity, err = conn.HandlePOST(h.scopesForConnector(ctx, authReq), r.PostFormValue("SAMLResponse"), authReq.ID)
 	default:
 		h.renderError(r, w, http.StatusInternalServerError, "Requested resource does not exist.")
 		return
@@ -121,7 +120,12 @@ func (h *Handler) handleConnectorCallback(w http.ResponseWriter, r *http.Request
 	authReq, err = h.finalizeLogin(ctx, identity, authReq, conn.Connector)
 	if err != nil {
 		h.Logger.ErrorContext(r.Context(), "failed to finalize login", "err", err)
-		h.renderError(r, w, http.StatusInternalServerError, "Login error.")
+		var groupsErr *connector.UserNotInRequiredGroupsError
+		if errors.As(err, &groupsErr) {
+			h.renderError(r, w, http.StatusForbidden, ErrMsgNotInRequiredGroups)
+		} else {
+			h.renderError(r, w, http.StatusInternalServerError, "Login error.")
+		}
 		return
 	}
 
