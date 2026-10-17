@@ -82,6 +82,7 @@ func TestFinalizeLoginLogsClientID(t *testing.T) {
 		Expiry:      time.Now().Add(time.Hour),
 		ConnectorID: "mock",
 	}
+	require.NoError(t, server.Storage.CreateClient(ctx, storage.Client{ID: "example-app"}))
 	require.NoError(t, server.Storage.CreateAuthRequest(ctx, authReq))
 
 	ident := connector.Identity{UserID: "user-1", Email: "user@example.com"}
