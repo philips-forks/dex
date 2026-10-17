@@ -35,21 +35,31 @@ func TestHandleCallback_AddGroups(t *testing.T) {
 		name            string
 		enableRoleClaim bool
 		addGroups       []string
+		scopes          connector.Scopes
 		want            []string
 	}{
 		{
 			name:      "addGroups only",
+			scopes:    connector.Scopes{Groups: true},
 			addGroups: []string{"customer:acme", "", "customer:acme"},
 			want:      []string{"customer:acme"},
 		},
 		{
 			name:            "merged with IAM role groups",
+			scopes:          connector.Scopes{Groups: true},
 			enableRoleClaim: true,
 			addGroups:       []string{"customer:acme", "urn:iamr:org1:admin"},
 			want:            []string{"urn:iamr:org1:admin", "customer:acme"},
 		},
 		{
+			name:      "added even without the groups scope",
+			addGroups: []string{"customer:acme"},
+			scopes:    connector.Scopes{},
+			want:      []string{"customer:acme"},
+		},
+		{
 			name:            "no addGroups keeps role groups unchanged",
+			scopes:          connector.Scopes{Groups: true},
 			enableRoleClaim: true,
 			want:            []string{"urn:iamr:org1:admin"},
 		},
@@ -94,7 +104,7 @@ func TestHandleCallback_AddGroups(t *testing.T) {
 				t.Fatal("failed to create request", err)
 			}
 
-			identity, err := conn.HandleCallback(connector.Scopes{Groups: true}, connectorData, req)
+			identity, err := conn.HandleCallback(tc.scopes, connectorData, req)
 			if err != nil {
 				t.Fatal("handle callback failed", err)
 			}
