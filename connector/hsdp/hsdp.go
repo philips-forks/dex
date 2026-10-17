@@ -42,6 +42,11 @@ type Config struct {
 	// philips.com SSO) instead of showing its own login page.
 	IDPHint string `json:"idpHint"`
 
+	// AddGroups are always added to the user's groups (identity.Groups and the
+	// token's groups claim), e.g. to identify users coming in through this
+	// connector by a fixed group.
+	AddGroups []string `json:"addGroups"`
+
 	// Extensions implemented by HSP IAM
 	Extension
 
@@ -186,6 +191,7 @@ func (c *Config) Open(id string, logger *slog.Logger) (conn connector.Connector,
 		roleAsGroupClaim:          c.RoleAsGroupClaim,
 		stateViaCookie:            c.StateViaCookie,
 		idpHint:                   c.IDPHint,
+		addGroups:                 mergeGroups(nil, c.AddGroups),
 	}, nil
 }
 
@@ -224,6 +230,7 @@ type HSDPConnector struct {
 	tenantMap                 TenantMap
 	stateViaCookie            bool
 	idpHint                   string
+	addGroups                 []string
 }
 
 func (c *HSDPConnector) StateViaCookie() bool {
@@ -521,6 +528,7 @@ func (c *HSDPConnector) createIdentity(ctx context.Context, identity connector.I
 	if c.enableRoleClaim {
 		identity.Groups = orgRoleGroups(*introspectResponse)
 	}
+	identity.Groups = mergeGroups(identity.Groups, c.addGroups)
 
 	// Attach connector data
 	connData, err := json.Marshal(&cd)
