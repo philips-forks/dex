@@ -875,6 +875,179 @@ func TestTrySessionLoginWithSession_IDTokenHint(t *testing.T) {
 	})
 }
 
+// TestTrySessionLogin_AllowedGroups covers the per-client group restriction on
+// the session-reuse path. finalizeLogin enforces AllowedGroups when the
+// connector callback lands, but a session is reused without calling the
+// connector at all — so without the check in trySessionLoginWithSession a
+// session (or an SSO session) could carry a user into a client they are not
+// allowed to use.
+func TestTrySessionLogin_AllowedGroups(t *testing.T) {
+	ctx := t.Context()
+
+	// setupGroupedClient creates a client that only admits users in
+	// "urn:zitadel:group:admins", and a session whose identity holds exactly
+	// the given groups.
+	setupGroupedClient := func(t *testing.T, s *sessionTestServer, clientID string, ssoSharedWith []string, groups []string) storage.AuthRequest {
+		t.Helper()
+		now := s.Now()
+
+		require.NoError(t, s.Storage.CreateClient(ctx, storage.Client{
+			ID:            clientID,
+			Secret:        "secret",
+			Name:          clientID,
+			SSOSharedWith: ssoSharedWith,
+			AllowedGroups: []string{"urn:zitadel:group:admins"},
+		}))
+
+		require.NoError(t, s.Storage.CreateAuthSession(ctx, storage.AuthSession{
+			UserID:      "user-1",
+			ConnectorID: "mock",
+			ID:          "test-nonce", Secret: "test-nonce",
+			ClientStates: map[string]*storage.ClientAuthState{
+				clientID: {
+					AuthenticatedAt: now.Add(-1 * time.Minute),
+					LastActivity:    now.Add(-1 * time.Minute),
+				},
+			},
+			CreatedAt:      now.Add(-30 * time.Minute),
+			LastActivity:   now.Add(-1 * time.Minute),
+			IPAddress:      "127.0.0.1",
+			UserAgent:      "test",
+			AbsoluteExpiry: now.Add(24 * time.Hour),
+			IdleExpiry:     now.Add(59 * time.Minute),
+		}))
+
+		require.NoError(t, s.Storage.CreateUserIdentity(ctx, storage.UserIdentity{
+			UserID:      "user-1",
+			ConnectorID: "mock",
+			Claims: storage.Claims{
+				UserID:   "user-1",
+				Username: "testuser",
+				Email:    "test@example.com",
+				Groups:   groups,
+			},
+			Consents:  map[string][]string{clientID: {"openid", "email"}},
+			CreatedAt: now.Add(-1 * time.Hour),
+			LastLogin: now.Add(-30 * time.Minute),
+		}))
+
+		authReq := storage.AuthRequest{
+			ID:          storage.NewID(),
+			ClientID:    clientID,
+			ConnectorID: "mock",
+			Scopes:      []string{"openid", "email"},
+			RedirectURI: "http://localhost/callback",
+			MaxAge:      -1,
+			HMACKey:     storage.NewHMACKey(crypto.SHA256),
+			Expiry:      now.Add(10 * time.Minute),
+		}
+		require.NoError(t, s.Storage.CreateAuthRequest(ctx, authReq))
+		return authReq
+	}
+
+	t.Run("session reuse is refused when the user is not in the client's groups", func(t *testing.T) {
+		s := newTestSessionServer(t)
+		s.SkipApproval = true
+		authReq := setupGroupedClient(t, s, "client-b", nil, []string{"urn:zitadel:group:users"})
+
+		r := sessionCookieRequest("test-nonce")
+		w := httptest.NewRecorder()
+
+		ok := s.trySessionLogin(ctx, r, w, &authReq)
+		assert.False(t, ok, "a session must not carry a user into a client it is not allowed to use")
+	})
+
+	t.Run("session reuse is allowed when the user is in the client's groups", func(t *testing.T) {
+		s := newTestSessionServer(t)
+		s.SkipApproval = true
+		authReq := setupGroupedClient(t, s, "client-b", nil, []string{"urn:zitadel:group:admins"})
+
+		r := sessionCookieRequest("test-nonce")
+		w := httptest.NewRecorder()
+
+		ok := s.trySessionLogin(ctx, r, w, &authReq)
+		assert.True(t, ok, "a user in the client's groups may reuse the session")
+	})
+
+	t.Run("SSO into a group-gated client is refused", func(t *testing.T) {
+		s := newTestSessionServer(t)
+		s.SkipApproval = true
+		now := s.Now()
+
+		// client-a shares its session with client-b; client-b is group-gated.
+		require.NoError(t, s.Storage.CreateClient(ctx, storage.Client{
+			ID:            "client-a",
+			Secret:        "secret",
+			Name:          "Client A",
+			SSOSharedWith: []string{"client-b"},
+		}))
+		require.NoError(t, s.Storage.CreateClient(ctx, storage.Client{
+			ID:            "client-b",
+			Secret:        "secret",
+			Name:          "Client B",
+			AllowedGroups: []string{"urn:zitadel:group:admins"},
+		}))
+
+		require.NoError(t, s.Storage.CreateAuthSession(ctx, storage.AuthSession{
+			UserID:      "user-1",
+			ConnectorID: "mock",
+			ID:          "test-nonce", Secret: "test-nonce",
+			ClientStates: map[string]*storage.ClientAuthState{
+				"client-a": {
+					AuthenticatedAt: now.Add(-1 * time.Minute),
+					LastActivity:    now.Add(-1 * time.Minute),
+				},
+			},
+			CreatedAt:      now.Add(-30 * time.Minute),
+			LastActivity:   now.Add(-1 * time.Minute),
+			IPAddress:      "127.0.0.1",
+			UserAgent:      "test",
+			AbsoluteExpiry: now.Add(24 * time.Hour),
+			IdleExpiry:     now.Add(59 * time.Minute),
+		}))
+
+		require.NoError(t, s.Storage.CreateUserIdentity(ctx, storage.UserIdentity{
+			UserID:      "user-1",
+			ConnectorID: "mock",
+			Claims: storage.Claims{
+				UserID:   "user-1",
+				Username: "testuser",
+				Email:    "test@example.com",
+				Groups:   []string{"urn:zitadel:group:users"},
+			},
+			Consents:  map[string][]string{"client-b": {"openid", "email"}},
+			CreatedAt: now.Add(-1 * time.Hour),
+			LastLogin: now.Add(-30 * time.Minute),
+		}))
+
+		authReq := storage.AuthRequest{
+			ID:          storage.NewID(),
+			ClientID:    "client-b",
+			ConnectorID: "mock",
+			Scopes:      []string{"openid", "email"},
+			RedirectURI: "http://localhost/callback",
+			MaxAge:      -1,
+			HMACKey:     storage.NewHMACKey(crypto.SHA256),
+			Expiry:      now.Add(10 * time.Minute),
+		}
+		require.NoError(t, s.Storage.CreateAuthRequest(ctx, authReq))
+
+		r := sessionCookieRequest("test-nonce")
+		w := httptest.NewRecorder()
+
+		session := s.Sessions.ValidAuthSession(ctx, w, r, &authReq)
+		require.NotNil(t, session)
+
+		ok := s.trySessionLoginWithSession(ctx, r, w, &authReq, session)
+		assert.False(t, ok, "SSO must not carry a user into a group-gated client they are not in")
+
+		// And no client state may be left behind for the refused client.
+		updated, err := s.Storage.GetAuthSession(ctx, "test-nonce")
+		require.NoError(t, err)
+		assert.NotContains(t, updated.ClientStates, "client-b")
+	})
+}
+
 func TestParseAuthRequest_PromptAndMaxAge(t *testing.T) {
 	t.Run("prompt=consent sets ForceApprovalPrompt", func(t *testing.T) {
 		authReq := storage.AuthRequest{
