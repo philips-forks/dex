@@ -2,6 +2,7 @@ package authflow
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -23,6 +24,43 @@ func (h *Handler) trySessionLoginWithSession(ctx context.Context, r *http.Reques
 	}
 
 	now := h.Now()
+
+	// Load identity from storage (same path for direct and SSO login).
+	ui, err := h.Storage.GetUserIdentity(ctx, session.UserID, session.ConnectorID)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "session: failed to get user identity", "err", err)
+		return false
+	}
+
+	// Per-client group restriction. finalizeLogin enforces AllowedGroups on the
+	// connector-callback path, but a session is reused without calling the
+	// connector at all — so without this check a session could carry a user
+	// into a client they are not allowed to use. That matters most for SSO:
+	// the session is reused for a client the user never authenticated against,
+	// and the identity's group membership is the only thing standing between
+	// them and a client that is supposed to be gated.
+	//
+	// Returning false (rather than erroring) leaves the request to the normal
+	// flow: the connector runs, and finalizeLogin rejects the login with the
+	// proper "not in required groups" error. For prompt=none the caller
+	// turns this into login_required, so no silent login happens either.
+	client, err := h.Storage.GetClient(ctx, authReq.ClientID)
+	switch {
+	case err == nil:
+		if len(client.AllowedGroups) > 0 && !inAllowedGroups(ui.Claims.Groups, client.AllowedGroups) {
+			h.Logger.InfoContext(ctx, "session: user not in client's allowed groups, forcing re-authentication",
+				"user_id", session.UserID, "client_id", authReq.ClientID)
+			return false
+		}
+	case errors.Is(err, storage.ErrNotFound):
+		// The client is gone. The login cannot complete anyway — the token
+		// endpoint rejects an unknown client — so there is no group set to
+		// enforce here.
+		h.Logger.DebugContext(ctx, "session: client no longer exists", "client_id", authReq.ClientID)
+	default:
+		h.Logger.ErrorContext(ctx, "session: failed to get client", "err", err)
+		return false
+	}
 
 	_, directLogin := session.ClientStates[authReq.ClientID]
 	if !directLogin {
@@ -53,13 +91,6 @@ func (h *Handler) trySessionLoginWithSession(ctx context.Context, r *http.Reques
 
 		h.Logger.DebugContext(ctx, "session: SSO login from sharing client",
 			"user_id", session.UserID, "connector_id", session.ConnectorID, "client_id", authReq.ClientID)
-	}
-
-	// Load identity from storage (same path for direct and SSO login).
-	ui, err := h.Storage.GetUserIdentity(ctx, session.UserID, session.ConnectorID)
-	if err != nil {
-		h.Logger.ErrorContext(ctx, "session: failed to get user identity", "err", err)
-		return false
 	}
 
 	// Check max_age: if the user's last authentication is too old, force re-auth.
