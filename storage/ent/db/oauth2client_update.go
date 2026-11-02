@@ -233,6 +233,24 @@ func (_u *OAuth2ClientUpdate) ClearRefreshTokenLifetime() *OAuth2ClientUpdate {
 	return _u
 }
 
+// SetAllowedGroups sets the "allowed_groups" field.
+func (_u *OAuth2ClientUpdate) SetAllowedGroups(v []string) *OAuth2ClientUpdate {
+	_u.mutation.SetAllowedGroups(v)
+	return _u
+}
+
+// AppendAllowedGroups appends value to the "allowed_groups" field.
+func (_u *OAuth2ClientUpdate) AppendAllowedGroups(v []string) *OAuth2ClientUpdate {
+	_u.mutation.AppendAllowedGroups(v)
+	return _u
+}
+
+// ClearAllowedGroups clears the value of the "allowed_groups" field.
+func (_u *OAuth2ClientUpdate) ClearAllowedGroups() *OAuth2ClientUpdate {
+	_u.mutation.ClearAllowedGroups()
+	return _u
+}
+
 // SetClientCredentialsClaims sets the "client_credentials_claims" field.
 func (_u *OAuth2ClientUpdate) SetClientCredentialsClaims(v *storage.ClientCredentialsClaims) *OAuth2ClientUpdate {
 	_u.mutation.SetClientCredentialsClaims(v)
@@ -398,6 +416,17 @@ func (_u *OAuth2ClientUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if _u.mutation.RefreshTokenLifetimeCleared() {
 		_spec.ClearField(oauth2client.FieldRefreshTokenLifetime, field.TypeString)
+	}
+	if value, ok := _u.mutation.AllowedGroups(); ok {
+		_spec.SetField(oauth2client.FieldAllowedGroups, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedGroups(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldAllowedGroups, value)
+		})
+	}
+	if _u.mutation.AllowedGroupsCleared() {
+		_spec.ClearField(oauth2client.FieldAllowedGroups, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ClientCredentialsClaims(); ok {
 		_spec.SetField(oauth2client.FieldClientCredentialsClaims, field.TypeJSON, value)
@@ -629,6 +658,24 @@ func (_u *OAuth2ClientUpdateOne) ClearRefreshTokenLifetime() *OAuth2ClientUpdate
 	return _u
 }
 
+// SetAllowedGroups sets the "allowed_groups" field.
+func (_u *OAuth2ClientUpdateOne) SetAllowedGroups(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetAllowedGroups(v)
+	return _u
+}
+
+// AppendAllowedGroups appends value to the "allowed_groups" field.
+func (_u *OAuth2ClientUpdateOne) AppendAllowedGroups(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.AppendAllowedGroups(v)
+	return _u
+}
+
+// ClearAllowedGroups clears the value of the "allowed_groups" field.
+func (_u *OAuth2ClientUpdateOne) ClearAllowedGroups() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearAllowedGroups()
+	return _u
+}
+
 // SetClientCredentialsClaims sets the "client_credentials_claims" field.
 func (_u *OAuth2ClientUpdateOne) SetClientCredentialsClaims(v *storage.ClientCredentialsClaims) *OAuth2ClientUpdateOne {
 	_u.mutation.SetClientCredentialsClaims(v)
@@ -824,6 +871,17 @@ func (_u *OAuth2ClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuth2Clie
 	}
 	if _u.mutation.RefreshTokenLifetimeCleared() {
 		_spec.ClearField(oauth2client.FieldRefreshTokenLifetime, field.TypeString)
+	}
+	if value, ok := _u.mutation.AllowedGroups(); ok {
+		_spec.SetField(oauth2client.FieldAllowedGroups, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedGroups(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldAllowedGroups, value)
+		})
+	}
+	if _u.mutation.AllowedGroupsCleared() {
+		_spec.ClearField(oauth2client.FieldAllowedGroups, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ClientCredentialsClaims(); ok {
 		_spec.SetField(oauth2client.FieldClientCredentialsClaims, field.TypeJSON, value)

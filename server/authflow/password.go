@@ -4,13 +4,13 @@ package authflow
 // form and the credential check for password connectors.
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 
 	"github.com/gorilla/mux"
 
 	"github.com/dexidp/dex/connector"
-	"github.com/dexidp/dex/server/tokens"
 	"github.com/dexidp/dex/storage"
 )
 
@@ -67,7 +67,7 @@ func (h *Handler) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		// Before rendering the password form, allow connectors that support SPNEGO to try Kerberos auth.
 		if sp, ok := pwConn.(connector.SPNEGOAware); ok {
-			scopes := tokens.ParseScopes(authReq.Scopes)
+			scopes := h.scopesForConnector(ctx, authReq)
 			if ident, handled, err := sp.TrySPNEGO(ctx, scopes, w, r); bool(handled) {
 				if err != nil {
 					// SPNEGO handled the request but reported an error (e.g., LDAP lookup failed
@@ -80,7 +80,12 @@ func (h *Handler) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 					authReq, err = h.finalizeLogin(ctx, *ident, authReq, conn.Connector)
 					if err != nil {
 						h.Logger.ErrorContext(ctx, "failed to finalize login", "err", err)
-						h.renderError(r, w, http.StatusInternalServerError, "Login error.")
+						var groupsErr *connector.UserNotInRequiredGroupsError
+						if errors.As(err, &groupsErr) {
+							h.renderError(r, w, http.StatusForbidden, ErrMsgNotInRequiredGroups)
+						} else {
+							h.renderError(r, w, http.StatusInternalServerError, "Login error.")
+						}
 						return
 					}
 					http.Redirect(w, r, h.buildContinueURL(authReq), http.StatusSeeOther)
@@ -98,7 +103,7 @@ func (h *Handler) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		username := r.FormValue("login")
 		password := r.FormValue("password")
-		scopes := tokens.ParseScopes(authReq.Scopes)
+		scopes := h.scopesForConnector(ctx, authReq)
 
 		identity, ok, err := pwConn.Login(r.Context(), scopes, username, password)
 		if err != nil {
@@ -116,7 +121,12 @@ func (h *Handler) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 		authReq, err = h.finalizeLogin(r.Context(), identity, authReq, conn.Connector)
 		if err != nil {
 			h.Logger.ErrorContext(r.Context(), "failed to finalize login", "err", err)
-			h.renderError(r, w, http.StatusInternalServerError, "Login error.")
+			var groupsErr *connector.UserNotInRequiredGroupsError
+			if errors.As(err, &groupsErr) {
+				h.renderError(r, w, http.StatusForbidden, ErrMsgNotInRequiredGroups)
+			} else {
+				h.renderError(r, w, http.StatusInternalServerError, "Login error.")
+			}
 			return
 		}
 

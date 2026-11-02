@@ -6623,6 +6623,8 @@ type OAuth2ClientMutation struct {
 	appendsso_shared_with           []string
 	backchannel_logout_uri          *string
 	refresh_token_lifetime          *string
+	allowed_groups                  *[]string
+	appendallowed_groups            []string
 	client_credentials_claims       **storage.ClientCredentialsClaims
 	clearedFields                   map[string]struct{}
 	done                            bool
@@ -7366,6 +7368,71 @@ func (m *OAuth2ClientMutation) ResetRefreshTokenLifetime() {
 	delete(m.clearedFields, oauth2client.FieldRefreshTokenLifetime)
 }
 
+// SetAllowedGroups sets the "allowed_groups" field.
+func (m *OAuth2ClientMutation) SetAllowedGroups(s []string) {
+	m.allowed_groups = &s
+	m.appendallowed_groups = nil
+}
+
+// AllowedGroups returns the value of the "allowed_groups" field in the mutation.
+func (m *OAuth2ClientMutation) AllowedGroups() (r []string, exists bool) {
+	v := m.allowed_groups
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowedGroups returns the old "allowed_groups" field's value of the OAuth2Client entity.
+// If the OAuth2Client object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OAuth2ClientMutation) OldAllowedGroups(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowedGroups is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowedGroups requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowedGroups: %w", err)
+	}
+	return oldValue.AllowedGroups, nil
+}
+
+// AppendAllowedGroups adds s to the "allowed_groups" field.
+func (m *OAuth2ClientMutation) AppendAllowedGroups(s []string) {
+	m.appendallowed_groups = append(m.appendallowed_groups, s...)
+}
+
+// AppendedAllowedGroups returns the list of values that were appended to the "allowed_groups" field in this mutation.
+func (m *OAuth2ClientMutation) AppendedAllowedGroups() ([]string, bool) {
+	if len(m.appendallowed_groups) == 0 {
+		return nil, false
+	}
+	return m.appendallowed_groups, true
+}
+
+// ClearAllowedGroups clears the value of the "allowed_groups" field.
+func (m *OAuth2ClientMutation) ClearAllowedGroups() {
+	m.allowed_groups = nil
+	m.appendallowed_groups = nil
+	m.clearedFields[oauth2client.FieldAllowedGroups] = struct{}{}
+}
+
+// AllowedGroupsCleared returns if the "allowed_groups" field was cleared in this mutation.
+func (m *OAuth2ClientMutation) AllowedGroupsCleared() bool {
+	_, ok := m.clearedFields[oauth2client.FieldAllowedGroups]
+	return ok
+}
+
+// ResetAllowedGroups resets all changes to the "allowed_groups" field.
+func (m *OAuth2ClientMutation) ResetAllowedGroups() {
+	m.allowed_groups = nil
+	m.appendallowed_groups = nil
+	delete(m.clearedFields, oauth2client.FieldAllowedGroups)
+}
+
 // SetClientCredentialsClaims sets the "client_credentials_claims" field.
 func (m *OAuth2ClientMutation) SetClientCredentialsClaims(scc *storage.ClientCredentialsClaims) {
 	m.client_credentials_claims = &scc
@@ -7449,7 +7516,7 @@ func (m *OAuth2ClientMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OAuth2ClientMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.secret != nil {
 		fields = append(fields, oauth2client.FieldSecret)
 	}
@@ -7486,6 +7553,9 @@ func (m *OAuth2ClientMutation) Fields() []string {
 	if m.refresh_token_lifetime != nil {
 		fields = append(fields, oauth2client.FieldRefreshTokenLifetime)
 	}
+	if m.allowed_groups != nil {
+		fields = append(fields, oauth2client.FieldAllowedGroups)
+	}
 	if m.client_credentials_claims != nil {
 		fields = append(fields, oauth2client.FieldClientCredentialsClaims)
 	}
@@ -7521,6 +7591,8 @@ func (m *OAuth2ClientMutation) Field(name string) (ent.Value, bool) {
 		return m.BackchannelLogoutURI()
 	case oauth2client.FieldRefreshTokenLifetime:
 		return m.RefreshTokenLifetime()
+	case oauth2client.FieldAllowedGroups:
+		return m.AllowedGroups()
 	case oauth2client.FieldClientCredentialsClaims:
 		return m.ClientCredentialsClaims()
 	}
@@ -7556,6 +7628,8 @@ func (m *OAuth2ClientMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldBackchannelLogoutURI(ctx)
 	case oauth2client.FieldRefreshTokenLifetime:
 		return m.OldRefreshTokenLifetime(ctx)
+	case oauth2client.FieldAllowedGroups:
+		return m.OldAllowedGroups(ctx)
 	case oauth2client.FieldClientCredentialsClaims:
 		return m.OldClientCredentialsClaims(ctx)
 	}
@@ -7651,6 +7725,13 @@ func (m *OAuth2ClientMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRefreshTokenLifetime(v)
 		return nil
+	case oauth2client.FieldAllowedGroups:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowedGroups(v)
+		return nil
 	case oauth2client.FieldClientCredentialsClaims:
 		v, ok := value.(*storage.ClientCredentialsClaims)
 		if !ok {
@@ -7712,6 +7793,9 @@ func (m *OAuth2ClientMutation) ClearedFields() []string {
 	if m.FieldCleared(oauth2client.FieldRefreshTokenLifetime) {
 		fields = append(fields, oauth2client.FieldRefreshTokenLifetime)
 	}
+	if m.FieldCleared(oauth2client.FieldAllowedGroups) {
+		fields = append(fields, oauth2client.FieldAllowedGroups)
+	}
 	if m.FieldCleared(oauth2client.FieldClientCredentialsClaims) {
 		fields = append(fields, oauth2client.FieldClientCredentialsClaims)
 	}
@@ -7752,6 +7836,9 @@ func (m *OAuth2ClientMutation) ClearField(name string) error {
 		return nil
 	case oauth2client.FieldRefreshTokenLifetime:
 		m.ClearRefreshTokenLifetime()
+		return nil
+	case oauth2client.FieldAllowedGroups:
+		m.ClearAllowedGroups()
 		return nil
 	case oauth2client.FieldClientCredentialsClaims:
 		m.ClearClientCredentialsClaims()
@@ -7799,6 +7886,9 @@ func (m *OAuth2ClientMutation) ResetField(name string) error {
 		return nil
 	case oauth2client.FieldRefreshTokenLifetime:
 		m.ResetRefreshTokenLifetime()
+		return nil
+	case oauth2client.FieldAllowedGroups:
+		m.ResetAllowedGroups()
 		return nil
 	case oauth2client.FieldClientCredentialsClaims:
 		m.ResetClientCredentialsClaims()
