@@ -569,7 +569,7 @@ func TestClientAllowedGroups(t *testing.T) {
 
 	if _, err := client.UpdateClient(ctx, &api.UpdateClientReq{
 		Id:            "allowed-groups-client",
-		AllowedGroups: []string{"team-c"},
+		AllowedGroups: &api.StringList{Values: []string{"team-c"}},
 	}); err != nil {
 		t.Fatalf("UpdateClient: %v", err)
 	}
@@ -579,6 +579,36 @@ func TestClientAllowedGroups(t *testing.T) {
 	}
 	if !slices.Equal(getResp.Client.AllowedGroups, []string{"team-c"}) {
 		t.Errorf("GetClient AllowedGroups after update: got %v, want [team-c]", getResp.Client.AllowedGroups)
+	}
+
+	// An update that leaves AllowedGroups out of the request must not touch it.
+	if _, err := client.UpdateClient(ctx, &api.UpdateClientReq{
+		Id:   "allowed-groups-client",
+		Name: "Test renamed",
+	}); err != nil {
+		t.Fatalf("UpdateClient without AllowedGroups: %v", err)
+	}
+	getResp, err = client.GetClient(ctx, &api.GetClientReq{Id: "allowed-groups-client"})
+	if err != nil {
+		t.Fatalf("GetClient after unrelated update: %v", err)
+	}
+	if !slices.Equal(getResp.Client.AllowedGroups, []string{"team-c"}) {
+		t.Errorf("GetClient AllowedGroups after unrelated update: got %v, want unchanged [team-c]", getResp.Client.AllowedGroups)
+	}
+
+	// An update that explicitly carries an empty list clears the restriction.
+	if _, err := client.UpdateClient(ctx, &api.UpdateClientReq{
+		Id:            "allowed-groups-client",
+		AllowedGroups: &api.StringList{},
+	}); err != nil {
+		t.Fatalf("UpdateClient clearing AllowedGroups: %v", err)
+	}
+	getResp, err = client.GetClient(ctx, &api.GetClientReq{Id: "allowed-groups-client"})
+	if err != nil {
+		t.Fatalf("GetClient after clearing: %v", err)
+	}
+	if len(getResp.Client.AllowedGroups) != 0 {
+		t.Errorf("GetClient AllowedGroups after clearing: got %v, want empty", getResp.Client.AllowedGroups)
 	}
 }
 

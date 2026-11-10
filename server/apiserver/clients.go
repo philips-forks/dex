@@ -116,8 +116,11 @@ func (d dexAPI) UpdateClient(ctx context.Context, req *api.UpdateClientReq) (*ap
 		if req.RefreshTokenLifetime != nil {
 			old.RefreshTokenLifetime = req.GetRefreshTokenLifetime()
 		}
+		// AllowedGroups is wrapped in StringList so presence is tracked by the
+		// pointer: a request that omits the field leaves the groups alone, one
+		// that carries an empty list clears them.
 		if req.AllowedGroups != nil {
-			old.AllowedGroups = req.AllowedGroups
+			old.AllowedGroups = req.AllowedGroups.GetValues()
 		}
 		return old, nil
 	})

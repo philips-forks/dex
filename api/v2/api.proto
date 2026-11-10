@@ -80,6 +80,15 @@ message DeleteClientResp {
   bool not_found = 1;
 }
 
+// StringList wraps a repeated string so a message field can carry it. proto3
+// cannot mark a repeated field "optional" to get presence tracking, but a
+// singular message field is always presence-tracked (a nil pointer vs. a
+// pointer to an empty message), so wrapping gives repeated fields the same
+// explicit-presence trick used for the optional scalars below.
+message StringList {
+    repeated string values = 1;
+}
+
 // UpdateClientReq is a request to update an existing client.
 message UpdateClientReq {
     string id = 1;
@@ -98,7 +107,12 @@ message UpdateClientReq {
     // to be tellable apart from "leave it alone" to put a client back on the
     // default lifetime.
     optional string refresh_token_lifetime = 10;
-    repeated string allowed_groups = 11;
+    // Wrapped (see StringList) so an explicitly empty list - clearing the
+    // restriction - can be told apart from the field being left out of the
+    // request. A bare repeated field can't: an empty repeated value and an
+    // absent one are both zero bytes on the wire, so "leave alone" and
+    // "clear" would be indistinguishable.
+    StringList allowed_groups = 11;
 }
 
 // UpdateClientResp returns the response from updating a client.
